@@ -23,7 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("ERM4 DVT Test Planner")
+st.title("Design verification testing (DVT) Test Planner")
 
 # --- Requirements file ---
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # Or .xlsx if needed
