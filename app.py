@@ -5,17 +5,28 @@ from docx import Document
 import mammoth  # For converting .docx to HTML
 
 # --- Streamlit Page Setup ---
-st.set_page_config(page_title="Design verification testing (DVT) Test Planner", layout="centered")
+st.set_page_config(page_title="Design verification testing (DVT) Test Planner", layout="wide")  # changed from "centered"
+
 st.markdown("""
     <style>
+        /* Stretch content area */
+        .main .block-container {
+            max-width: 95%;
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+
+        /* Improve font & spacing */
         .reportview-container .main {
             font-family: "Times New Roman", Times, serif;
             font-size: 16px;
             line-height: 1.6;
         }
+
         h1, h2, h3 {
             color: #003366;
         }
+
         pre {
             white-space: pre-wrap;
             font-family: "Courier New", Courier, monospace;
@@ -100,5 +111,4 @@ if df is not None:
             st.error("No match found for that Requirement ID.")
 else:
     st.error("Could not load the requirements file from the repository.")
-
 
