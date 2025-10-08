@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+from docx import Document  # for reading Word docs
 
 st.set_page_config(page_title="ERM4 DVT Test Planner", layout="centered")
 st.title("ERM4 DVT Test Planner")
@@ -9,12 +10,24 @@ st.title("ERM4 DVT Test Planner")
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # or .xlsx if you're using Excel
 
 def load_description_from_file(req_id):
-    # Try .txt first, then .md
-    for ext in [".txt", ".md"]:
+    for ext in [".docx", ".txt"]:
         filename = f"{req_id}{ext}"
         if os.path.exists(filename):
-            with open(filename, "r", encoding="utf-8") as file:
-                return file.read()
+            if ext == ".docx":
+                try:
+                    doc = Document(filename)
+                    full_text = [para.text for para in doc.paragraphs]
+                    return "\n\n".join(full_text)
+                except Exception as e:
+                    st.error(f"Error reading Word document: {e}")
+                    return None
+            else:  # .txt file
+                try:
+                    with open(filename, "r", encoding="utf-8") as file:
+                        return file.read()
+                except Exception as e:
+                    st.error(f"Error reading text file: {e}")
+                    return None
     return None
 
 def read_requirements_file():
@@ -62,8 +75,9 @@ if df is not None:
                 st.subheader("DVT Test Description")
                 st.markdown(test_description)
             else:
-                st.warning(f"No `.txt` or `.md` file found for `{user_input}` (expected `{user_input_upper}.txt` or `{user_input_upper}.md`)")
+                st.warning(f"No `.docx` or `.txt` file found for `{user_input}` (expected `{user_input_upper}.docx` or `{user_input_upper}.txt`)")
         else:
             st.error("No match found for that Requirement ID.")
 else:
     st.error("Could not load the requirements file from the repository.")
+
