@@ -5,7 +5,7 @@ from docx import Document
 import mammoth  # For converting .docx to HTML
 
 # --- Streamlit Page Setup ---
-st.set_page_config(page_title="ERM4 DVT Test Planner", layout="centered")
+st.set_page_config(page_title="Design verification testing (DVT) Test Planner", layout="centered")
 st.markdown("""
     <style>
         .reportview-container .main {
