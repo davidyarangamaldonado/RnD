@@ -14,20 +14,11 @@ def load_description_from_file(req_id):
         filename = f"{req_id}{ext}"
         if os.path.exists(filename):
             if ext == ".docx":
-                try:
-                    doc = Document(filename)
-                    full_text = [para.text for para in doc.paragraphs]
-                    return "\n\n".join(full_text)
-                except Exception as e:
-                    st.error(f"Error reading Word document: {e}")
-                    return None
-            else:  # .txt file
-                try:
-                    with open(filename, "r", encoding="utf-8") as file:
-                        return file.read()
-                except Exception as e:
-                    st.error(f"Error reading text file: {e}")
-                    return None
+                doc = Document(filename)
+                return "\n".join([para.text for para in doc.paragraphs])
+            else:
+                with open(filename, "r", encoding="utf-8") as file:
+                    return file.read()
     return None
 
 def read_requirements_file():
