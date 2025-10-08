@@ -1,26 +1,33 @@
 import streamlit as st
 import pandas as pd
 import os
-from docx import Document  # for reading Word docs
+from docx import Document  # For reading .docx files
 
+# --- Streamlit Page Setup ---
 st.set_page_config(page_title="ERM4 DVT Test Planner", layout="centered")
 st.title("ERM4 DVT Test Planner")
 
-# File must be in your GitHub repo
-REQUIREMENTS_FILE = "dvt_requirements.csv"  # or .xlsx if you're using Excel
+# --- Requirements file in repo ---
+REQUIREMENTS_FILE = "dvt_requirements.csv"  # Or .xlsx if needed
 
+# --- Load Description from .docx or .txt ---
 def load_description_from_file(req_id):
+    """Tries to load a description from .docx or .txt file based on Requirement ID"""
     for ext in [".docx", ".txt"]:
         filename = f"{req_id}{ext}"
-        if os.path.exists(filename):
-            if ext == ".docx":
-                doc = Document(filename)
-                return "\n".join([para.text for para in doc.paragraphs])
-            else:
-                with open(filename, "r", encoding="utf-8") as file:
-                    return file.read()
+        if os.path.isfile(filename):
+            try:
+                if ext == ".docx":
+                    doc = Document(filename)
+                    return "\n".join(para.text for para in doc.paragraphs)
+                else:
+                    with open(filename, "r", encoding="utf-8") as file:
+                        return file.read()
+            except Exception as e:
+                return f"Error reading {ext} file: {e}"
     return None
 
+# --- Read Requirements File ---
 def read_requirements_file():
     try:
         if REQUIREMENTS_FILE.endswith(".csv"):
@@ -36,7 +43,7 @@ def read_requirements_file():
         st.error(f"Failed to read requirements file: {e}")
         return None
 
-# Load and prepare data
+# --- Load and Process Data ---
 df = read_requirements_file()
 
 if df is not None:
@@ -52,6 +59,7 @@ if df is not None:
     # Create a dictionary with uppercase keys for case-insensitive matching
     id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
 
+    # --- User Input ---
     user_input = st.text_input("Enter the Requirement ID (e.g. FREQ-1):").strip()
 
     if user_input:
@@ -66,9 +74,13 @@ if df is not None:
                 st.subheader("DVT Test Description")
                 st.markdown(test_description)
             else:
-                st.warning(f"No `.docx` or `.txt` file found for `{user_input}` (expected `{user_input_upper}.docx` or `{user_input_upper}.txt`)")
+                st.warning(
+                    f"No `.docx` or `.txt` file found for `{user_input}` "
+                    f"(expected `{user_input_upper}.docx` or `{user_input_upper}.txt`)"
+                )
         else:
             st.error("No match found for that Requirement ID.")
 else:
     st.error("Could not load the requirements file from the repository.")
+
 
