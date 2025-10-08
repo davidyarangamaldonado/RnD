@@ -11,9 +11,9 @@ st.markdown("""
     <style>
         /* Stretch content area */
         .main .block-container {
-            max-width: 95%;
-            padding-left: 2rem;
-            padding-right: 2rem;
+            max-width: 60%;
+            padding-left: 6rem;
+            padding-right: 6rem;
         }
 
         /* Improve font & spacing */
