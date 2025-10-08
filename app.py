@@ -9,10 +9,12 @@ st.title("ERM4 DVT Test Planner")
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # or .xlsx if you're using Excel
 
 def load_description_from_file(req_id):
-    filename = f"{req_id}.txt"
-    if os.path.exists(filename):
-        with open(filename, "r", encoding="utf-8") as file:
-            return file.read()
+    # Try .txt first, then .md
+    for ext in [".txt", ".md"]:
+        filename = f"{req_id}{ext}"
+        if os.path.exists(filename):
+            with open(filename, "r", encoding="utf-8") as file:
+                return file.read()
     return None
 
 def read_requirements_file():
@@ -60,7 +62,7 @@ if df is not None:
                 st.subheader("DVT Test Description")
                 st.markdown(test_description)
             else:
-                st.warning(f"No `.txt` file found for `{user_input}` (expected `{user_input_upper}.txt`)")
+                st.warning(f"No `.txt` or `.md` file found for `{user_input}` (expected `{user_input_upper}.txt` or `{user_input_upper}.md`)")
         else:
             st.error("No match found for that Requirement ID.")
 else:
