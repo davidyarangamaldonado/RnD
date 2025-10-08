@@ -1,30 +1,49 @@
 import streamlit as st
 import pandas as pd
 import os
-from docx import Document  # For reading .docx files
+from docx import Document
+import mammoth  # For converting .docx to HTML
 
 # --- Streamlit Page Setup ---
 st.set_page_config(page_title="ERM4 DVT Test Planner", layout="centered")
+st.markdown("""
+    <style>
+        .reportview-container .main {
+            font-family: "Times New Roman", Times, serif;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        h1, h2, h3 {
+            color: #003366;
+        }
+        pre {
+            white-space: pre-wrap;
+            font-family: "Courier New", Courier, monospace;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 st.title("ERM4 DVT Test Planner")
 
-# --- Requirements file in repo ---
+# --- Requirements file ---
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # Or .xlsx if needed
 
 # --- Load Description from .docx or .txt ---
 def load_description_from_file(req_id):
-    """Tries to load a description from .docx or .txt file based on Requirement ID"""
+    """Loads .docx or .txt file with formatting preserved."""
     for ext in [".docx", ".txt"]:
         filename = f"{req_id}{ext}"
         if os.path.isfile(filename):
             try:
                 if ext == ".docx":
-                    doc = Document(filename)
-                    return "\n".join(para.text for para in doc.paragraphs)
+                    with open(filename, "rb") as docx_file:
+                        result = mammoth.convert_to_html(docx_file)
+                        return result.value  # HTML content
                 else:
                     with open(filename, "r", encoding="utf-8") as file:
-                        return file.read()
+                        return f"<pre>{file.read()}</pre>"
             except Exception as e:
-                return f"Error reading {ext} file: {e}"
+                return f"<p style='color:red;'>Error reading {ext} file: {e}</p>"
     return None
 
 # --- Read Requirements File ---
@@ -56,7 +75,6 @@ if df is not None:
         st.error("File must have at least 3 columns (ID in col 1, Description in col 3).")
         st.stop()
 
-    # Create a dictionary with uppercase keys for case-insensitive matching
     id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
 
     # --- User Input ---
@@ -72,11 +90,11 @@ if df is not None:
 
             if test_description:
                 st.subheader("DVT Test Description")
-                st.markdown(test_description)
+                st.markdown(test_description, unsafe_allow_html=True)
             else:
                 st.warning(
                     f"No `.docx` or `.txt` file found for `{user_input}` "
-                    f"(expected `{user_input_upper}.docx` or `{user_input_upper}.txt`)"
+                    f"(expected `{user_input_upper}.docx` or `{user_input_upper}.txt`)."
                 )
         else:
             st.error("No match found for that Requirement ID.")
