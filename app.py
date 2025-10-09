@@ -5,6 +5,7 @@ from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from io import BytesIO
 from PIL import Image
+import mammoth
 
 # --- Streamlit Page Setup ---
 st.set_page_config(page_title="Design Verification Testing (DVT) Test Planner", layout="wide")
@@ -29,6 +30,14 @@ st.markdown("""
 
         table {
             width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        td {
+            padding: 6px;
         }
 
         pre {
@@ -43,117 +52,35 @@ st.title("Design Verification Testing (DVT) Test Planner")
 # --- Configurable Requirements File ---
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
 
-# --- Load Description (Word/Text with formatting and images) ---
+# --- Load Description (Word/Text with formatting, bullets, numbering, tables, and images) ---
 def load_description_from_file(req_id):
-    """Loads .docx or .txt file with formatting, tables, images, bullets, and nested numbering."""
+    """Loads .docx or .txt file with bullets/numbering (via Mammoth) + tables/images (via python-docx)."""
     for ext in [".docx", ".txt"]:
         filename = f"{req_id}{ext}"
         if os.path.isfile(filename):
             try:
                 if ext == ".docx":
-                    doc = Document(filename)
                     html_content = ""
                     images = []
 
-                    list_stack = []  # Stack to track open lists and their levels
+                    # --- 1) Use Mammoth for main text with bullets & numbering ---
+                    with open(filename, "rb") as docx_file:
+                        result = mammoth.convert_to_html(docx_file)
+                        html_content = result.value  # Bullets & numbering preserved
 
-                    def close_lists(current_level):
-                        nonlocal html_content
-                        while list_stack and list_stack[-1][1] >= current_level:
-                            tag, _ = list_stack.pop()
-                            html_content += f"</{tag}>"
-
-                    for para in doc.paragraphs:
-                        text = para.text.strip()
-                        style = para.style.name.lower()
-
-                        if not text:
-                            close_lists(0)
-                            html_content += "<br>"
-                            continue
-
-                        # Detect list levels and types
-                        is_list = False
-                        list_level = 0
-                        list_type = None  # 'ul' or 'ol'
-
-                        if "list bullet" in style:
-                            is_list = True
-                            list_type = "ul"
-                        elif "list number" in style:
-                            is_list = True
-                            list_type = "ol"
-
-                        if is_list:
-                            # Extract list level (e.g., 'list bullet 2' → level 2)
-                            parts = style.split()
-                            for p in parts:
-                                if p.isdigit():
-                                    list_level = int(p)
-                                    break
-                            else:
-                                list_level = 1  # Default to level 1 if not found
-
-                            # Close deeper or equal lists
-                            close_lists(list_level)
-
-                            # Open new list levels
-                            while len(list_stack) < list_level:
-                                html_content += f"<{list_type}>"
-                                list_stack.append((list_type, len(list_stack) + 1))
-
-                            # Build item content
-                            item_html = ""
-                            for run in para.runs:
-                                run_text = run.text.replace("\n", "<br>")
-                                if run.bold:
-                                    run_text = f"<b>{run_text}</b>"
-                                if run.italic:
-                                    run_text = f"<i>{run_text}</i>"
-                                if run.underline:
-                                    run_text = f"<u>{run_text}</u>"
-                                item_html += run_text
-                            html_content += f"<li>{item_html}</li>"
-                            continue
-
-                        else:
-                            close_lists(0)  # Close all open lists
-
-                            # Handle headings and normal paragraphs
-                            if "heading 1" in style:
-                                html_content += f"<h1>{text}</h1>"
-                            elif "heading 2" in style:
-                                html_content += f"<h2>{text}</h2>"
-                            elif "heading 3" in style:
-                                html_content += f"<h3>{text}</h3>"
-                            else:
-                                runs_html = ""
-                                for run in para.runs:
-                                    run_text = run.text.replace("\n", "<br>")
-                                    if run.bold:
-                                        run_text = f"<b>{run_text}</b>"
-                                    if run.italic:
-                                        run_text = f"<i>{run_text}</i>"
-                                    if run.underline:
-                                        run_text = f"<u>{run_text}</u>"
-                                    runs_html += run_text
-                                html_content += f"<p>{runs_html}</p>"
-
-                    # Close any remaining lists
-                    close_lists(0)
-
-                    # Parse tables
+                    # --- 2) Use python-docx for tables ---
+                    doc = Document(filename)
                     for table in doc.tables:
-                        html_content += "<table border='1' style='border-collapse: collapse; margin-bottom: 10px;'>"
+                        html_content += "<table>"
                         for row in table.rows:
                             html_content += "<tr>"
                             for cell in row.cells:
                                 cell_text = cell.text.strip().replace("\n", "<br>")
-                                html_content += f"<td style='padding: 6px;'>{cell_text}</td>"
+                                html_content += f"<td>{cell_text}</td>"
                             html_content += "</tr>"
                         html_content += "</table><br>"
 
-                    # Extract images (but don't show section heading)
+                    # --- 3) Extract images using python-docx ---
                     rels = doc.part.rels
                     for rel in rels.values():
                         if rel.reltype == RT.IMAGE:
@@ -165,10 +92,7 @@ def load_description_from_file(req_id):
                             except Exception:
                                 continue
 
-                    return {
-                        "html": html_content,
-                        "images": images
-                    }
+                    return {"html": html_content, "images": images}
 
                 else:  # .txt fallback
                     with open(filename, "r", encoding="utf-8") as file:
@@ -231,7 +155,6 @@ if df is not None:
                 st.subheader("DVT Test Description")
                 st.markdown(test_description["html"], unsafe_allow_html=True)
 
-                # Removed "Block Diagrams / Embedded Images" section title
                 if test_description["images"]:
                     for idx, img in enumerate(test_description["images"]):
                         st.image(img, caption=f"Figure {idx + 1}", width=500)
