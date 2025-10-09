@@ -1,43 +1,72 @@
+import streamlit as st
+import pandas as pd
 import os
-from io import BytesIO
 from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
-import mammoth
+from io import BytesIO
 from PIL import Image
-import streamlit as st
+import mammoth
 
-# ----------------------------
-# Styling
-# ----------------------------
+# --- Streamlit Page Setup ---
+st.set_page_config(page_title="Design Verification Testing (DVT) Test Planner", layout="wide")
+
 st.markdown("""
     <style>
-    /* Make the markdown look clean */
-    body { font-family: Arial, sans-serif; line-height: 1.6; }
+        .main .block-container {
+            max-width: 60%;
+            padding-left: 6rem;
+            padding-right: 6rem;
+        }
 
-    /* Ordered list styles */
-    ol { list-style-type: decimal; margin-left: 1.5em; }
-    ol ol { list-style-type: lower-alpha; }
-    ol ol ol { list-style-type: lower-roman; }
+        .reportview-container .main {
+            font-family: "Times New Roman", Times, serif;
+            font-size: 20px;
+            line-height: 1.6;
+        }
 
-    /* Unordered list styles */
-    ul { list-style-type: disc; margin-left: 1.5em; }
-    ul ul { list-style-type: circle; }
-    ul ul ul { list-style-type: square; }
+        h1, h2, h3 {
+            color: #003366;
+        }
 
-    /* Table styling */
-    table { border-collapse: collapse; margin-top: 10px; }
-    td, th { border: 1px solid #ccc; padding: 6px; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        td {
+            padding: 6px;
+        }
 
-    img { max-width: 100%; height: auto; margin-top: 10px; }
+        pre {
+            white-space: pre-wrap;
+            font-family: "Courier New", Courier, monospace;
+        }
+
+        /* --- Fix ordered list sub-numbering --- */
+        ol { list-style-type: decimal; margin-left: 1.5em; }
+        ol ol { list-style-type: lower-alpha; }
+        ol ol ol { list-style-type: lower-roman; }
+
+        /* --- Unordered list consistency --- */
+        ul { list-style-type: disc; margin-left: 1.5em; }
+        ul ul { list-style-type: circle; }
+        ul ul ul { list-style-type: square; }
+
+        img { max-width: 100%; height: auto; margin-top: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
-# ----------------------------
-# Load function
-# ----------------------------
+st.title("Design Verification Testing (DVT) Test Planner")
+
+# --- Configurable Requirements File ---
+REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
+
+# --- Load Description (Word/Text with formatting, bullets, numbering, tables, and images) ---
 def load_description_from_file(req_id):
-    """Loads .docx or .txt file with Mammoth for text + bullets,
-       python-docx for tables and images."""
+    """Loads .docx or .txt file with bullets/numbering (via Mammoth) + tables/images (via python-docx)."""
     for ext in [".docx", ".txt"]:
         filename = f"{req_id}{ext}"
         if os.path.isfile(filename):
@@ -46,12 +75,12 @@ def load_description_from_file(req_id):
                     html_content = ""
                     images = []
 
-                    # --- 1) Mammoth for clean text (bullets/numbering/headings) ---
+                    # --- 1) Use Mammoth for main text with bullets & numbering ---
                     with open(filename, "rb") as docx_file:
                         result = mammoth.convert_to_html(docx_file)
-                        html_content = result.value
+                        html_content = result.value  # Bullets & numbering preserved
 
-                    # --- 2) python-docx for tables ---
+                    # --- 2) Use python-docx for tables ---
                     doc = Document(filename)
                     for table in doc.tables:
                         html_content += "<table>"
@@ -63,7 +92,7 @@ def load_description_from_file(req_id):
                             html_content += "</tr>"
                         html_content += "</table><br>"
 
-                    # --- 3) python-docx for images ---
+                    # --- 3) Extract images using python-docx ---
                     rels = doc.part.rels
                     for rel in rels.values():
                         if rel.reltype == RT.IMAGE:
@@ -89,24 +118,64 @@ def load_description_from_file(req_id):
                     "html": f"<p style='color:red;'>Error reading {ext} file: {e}</p>",
                     "images": []
                 }
+
     return None
 
-# ----------------------------
-# Example usage
-# ----------------------------
-st.title("Requirement Viewer")
+# --- Read Requirements File ---
+def read_requirements_file():
+    try:
+        if REQUIREMENTS_FILE.endswith(".csv"):
+            return pd.read_csv(REQUIREMENTS_FILE)
+        elif REQUIREMENTS_FILE.endswith(".xlsx"):
+            return pd.read_excel(REQUIREMENTS_FILE, engine="openpyxl")
+        elif REQUIREMENTS_FILE.endswith(".xls"):
+            return pd.read_excel(REQUIREMENTS_FILE, engine="xlrd")
+        else:
+            st.error("Unsupported file format.")
+            return None
+    except Exception as e:
+        st.error(f"Failed to read requirements file: {e}")
+        return None
 
-req_id = st.text_input("Enter requirement ID:", "req1")
+# --- Load and Process Data ---
+df = read_requirements_file()
 
-if req_id:
-    description = load_description_from_file(req_id)
-    if description:
-        st.markdown(description["html"], unsafe_allow_html=True)
+if df is not None:
+    df.columns = [str(col).strip() for col in df.columns]
 
-        # Display extracted images
-        if description["images"]:
-            st.subheader("Images")
-            for img in description["images"]:
-                st.image(img)
-    else:
-        st.warning(f"No file found for {req_id}.docx or {req_id}.txt")
+    try:
+        requirement_ids = df.iloc[:, 0].astype(str).tolist()
+        descriptions = df.iloc[:, 2].astype(str).tolist()
+    except IndexError:
+        st.error("Requirements file must have at least 3 columns (ID in column 1, Description in column 3).")
+        st.stop()
+
+    id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
+
+    # --- User Input ---
+    user_input = st.text_input("Enter the Requirement ID (e.g. FREQ-1):").strip()
+
+    if user_input:
+        user_input_upper = user_input.upper()
+        if user_input_upper in id_to_description:
+            matched_description = id_to_description[user_input_upper]
+            st.success(f"**{user_input}**\n\n**Description:** {matched_description}")
+
+            test_description = load_description_from_file(user_input_upper)
+
+            if test_description:
+                st.subheader("DVT Test Description")
+                st.markdown(test_description["html"], unsafe_allow_html=True)
+
+                if test_description["images"]:
+                    for idx, img in enumerate(test_description["images"]):
+                        st.image(img, caption=f"Figure {idx + 1}", width=500)
+            else:
+                st.warning(
+                    f"No `.docx` or `.txt` file found for `{user_input}` "
+                    f"(expected `{user_input_upper}.docx` or `{user_input_upper}.txt`)."
+                )
+        else:
+            st.error("No match found for that Requirement ID.")
+else:
+    st.error("Could not load the requirements file.")
