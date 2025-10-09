@@ -173,9 +173,9 @@ if df is not None:
                 st.markdown(test_description["html"], unsafe_allow_html=True)
 
                 if test_description["images"]:
-                st.subheader("Block Diagrams / Embedded Images")
-                for idx, img in enumerate(test_description["images"]):
-                    st.image(img, caption=f"Figure {idx + 1}", width=500)
+                    st.subheader("Block Diagrams / Embedded Images")
+                    for idx, img in enumerate(test_description["images"]):
+                        st.image(img, caption=f"Figure {idx + 1}", width=500)
             else:
                 st.warning(
                     f"No `.docx` or `.txt` file found for `{user_input}` "
