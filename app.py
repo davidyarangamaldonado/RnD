@@ -45,7 +45,7 @@ REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
 
 # --- Load Description (Word/Text with formatting and images) ---
 def load_description_from_file(req_id):
-    """Loads .docx or .txt file with formatting, tables, images, bullets and numbering."""
+    """Loads .docx or .txt file with formatting, tables, images, bullets, and nested numbering."""
     for ext in [".docx", ".txt"]:
         filename = f"{req_id}{ext}"
         if os.path.isfile(filename):
@@ -55,48 +55,54 @@ def load_description_from_file(req_id):
                     html_content = ""
                     images = []
 
-                    list_buffer = []
-                    current_list_type = None  # "ul" or "ol"
+                    list_stack = []  # Stack to track open lists and their levels
 
-                    def flush_list():
-                        nonlocal html_content, list_buffer, current_list_type
-                        if list_buffer:
-                            tag = "ul" if current_list_type == "ul" else "ol"
-                            html_content += f"<{tag}>" + "".join(list_buffer) + f"</{tag}>"
-                            list_buffer = []
-                            current_list_type = None
+                    def close_lists(current_level):
+                        nonlocal html_content
+                        while list_stack and list_stack[-1][1] >= current_level:
+                            tag, _ = list_stack.pop()
+                            html_content += f"</{tag}>"
 
                     for para in doc.paragraphs:
                         text = para.text.strip()
                         style = para.style.name.lower()
 
                         if not text:
-                            flush_list()
+                            close_lists(0)
                             html_content += "<br>"
                             continue
 
-                        # Check for bullet/numbered list
-                        if "list bullet" in style:
-                            if current_list_type != "ul":
-                                flush_list()
-                                current_list_type = "ul"
-                            item_html = ""
-                            for run in para.runs:
-                                run_text = run.text.replace("\n", "<br>")
-                                if run.bold:
-                                    run_text = f"<b>{run_text}</b>"
-                                if run.italic:
-                                    run_text = f"<i>{run_text}</i>"
-                                if run.underline:
-                                    run_text = f"<u>{run_text}</u>"
-                                item_html += run_text
-                            list_buffer.append(f"<li>{item_html}</li>")
-                            continue
+                        # Detect list levels and types
+                        is_list = False
+                        list_level = 0
+                        list_type = None  # 'ul' or 'ol'
 
-                        elif "list number" in style or "list numbered" in style:
-                            if current_list_type != "ol":
-                                flush_list()
-                                current_list_type = "ol"
+                        if "list bullet" in style:
+                            is_list = True
+                            list_type = "ul"
+                        elif "list number" in style:
+                            is_list = True
+                            list_type = "ol"
+
+                        if is_list:
+                            # Extract list level (e.g., 'list bullet 2' → level 2)
+                            parts = style.split()
+                            for p in parts:
+                                if p.isdigit():
+                                    list_level = int(p)
+                                    break
+                            else:
+                                list_level = 1  # Default to level 1 if not found
+
+                            # Close deeper or equal lists
+                            close_lists(list_level)
+
+                            # Open new list levels
+                            while len(list_stack) < list_level:
+                                html_content += f"<{list_type}>"
+                                list_stack.append((list_type, len(list_stack) + 1))
+
+                            # Build item content
                             item_html = ""
                             for run in para.runs:
                                 run_text = run.text.replace("\n", "<br>")
@@ -107,13 +113,13 @@ def load_description_from_file(req_id):
                                 if run.underline:
                                     run_text = f"<u>{run_text}</u>"
                                 item_html += run_text
-                            list_buffer.append(f"<li>{item_html}</li>")
+                            html_content += f"<li>{item_html}</li>"
                             continue
 
                         else:
-                            # Flush any open list before continuing
-                            flush_list()
+                            close_lists(0)  # Close all open lists
 
+                            # Handle headings and normal paragraphs
                             if "heading 1" in style:
                                 html_content += f"<h1>{text}</h1>"
                             elif "heading 2" in style:
@@ -133,8 +139,8 @@ def load_description_from_file(req_id):
                                     runs_html += run_text
                                 html_content += f"<p>{runs_html}</p>"
 
-                    # Flush any remaining list at the end
-                    flush_list()
+                    # Close any remaining lists
+                    close_lists(0)
 
                     # Parse tables
                     for table in doc.tables:
@@ -147,7 +153,7 @@ def load_description_from_file(req_id):
                             html_content += "</tr>"
                         html_content += "</table><br>"
 
-                    # Extract images (block diagrams etc.)
+                    # Extract images (but don't show section heading)
                     rels = doc.part.rels
                     for rel in rels.values():
                         if rel.reltype == RT.IMAGE:
@@ -225,8 +231,8 @@ if df is not None:
                 st.subheader("DVT Test Description")
                 st.markdown(test_description["html"], unsafe_allow_html=True)
 
+                # Removed "Block Diagrams / Embedded Images" section title
                 if test_description["images"]:
-                    st.subheader("Block Diagrams / Embedded Images")
                     for idx, img in enumerate(test_description["images"]):
                         st.image(img, caption=f"Figure {idx + 1}", width=500)
             else:
