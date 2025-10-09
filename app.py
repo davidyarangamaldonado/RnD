@@ -45,7 +45,7 @@ REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
 
 # --- Load Description (Word/Text with formatting and images) ---
 def load_description_from_file(req_id):
-    """Loads .docx or .txt file with formatting and block diagram support."""
+    """Loads .docx or .txt file with formatting, tables, images, bullets and numbering."""
     for ext in [".docx", ".txt"]:
         filename = f"{req_id}{ext}"
         if os.path.isfile(filename):
@@ -55,23 +55,32 @@ def load_description_from_file(req_id):
                     html_content = ""
                     images = []
 
-                    # --- Parse paragraphs with formatting ---
+                    list_buffer = []
+                    current_list_type = None  # "ul" or "ol"
+
+                    def flush_list():
+                        nonlocal html_content, list_buffer, current_list_type
+                        if list_buffer:
+                            tag = "ul" if current_list_type == "ul" else "ol"
+                            html_content += f"<{tag}>" + "".join(list_buffer) + f"</{tag}>"
+                            list_buffer = []
+                            current_list_type = None
+
                     for para in doc.paragraphs:
                         text = para.text.strip()
                         style = para.style.name.lower()
 
                         if not text:
+                            flush_list()
                             html_content += "<br>"
                             continue
 
-                        if "heading 1" in style:
-                            html_content += f"<h1>{text}</h1>"
-                        elif "heading 2" in style:
-                            html_content += f"<h2>{text}</h2>"
-                        elif "heading 3" in style:
-                            html_content += f"<h3>{text}</h3>"
-                        else:
-                            runs_html = ""
+                        # Check for bullet/numbered list
+                        if "list bullet" in style:
+                            if current_list_type != "ul":
+                                flush_list()
+                                current_list_type = "ul"
+                            item_html = ""
                             for run in para.runs:
                                 run_text = run.text.replace("\n", "<br>")
                                 if run.bold:
@@ -80,10 +89,54 @@ def load_description_from_file(req_id):
                                     run_text = f"<i>{run_text}</i>"
                                 if run.underline:
                                     run_text = f"<u>{run_text}</u>"
-                                runs_html += run_text
-                            html_content += f"<p>{runs_html}</p>"
+                                item_html += run_text
+                            list_buffer.append(f"<li>{item_html}</li>")
+                            continue
 
-                    # --- Parse tables ---
+                        elif "list number" in style or "list numbered" in style:
+                            if current_list_type != "ol":
+                                flush_list()
+                                current_list_type = "ol"
+                            item_html = ""
+                            for run in para.runs:
+                                run_text = run.text.replace("\n", "<br>")
+                                if run.bold:
+                                    run_text = f"<b>{run_text}</b>"
+                                if run.italic:
+                                    run_text = f"<i>{run_text}</i>"
+                                if run.underline:
+                                    run_text = f"<u>{run_text}</u>"
+                                item_html += run_text
+                            list_buffer.append(f"<li>{item_html}</li>")
+                            continue
+
+                        else:
+                            # Flush any open list before continuing
+                            flush_list()
+
+                            if "heading 1" in style:
+                                html_content += f"<h1>{text}</h1>"
+                            elif "heading 2" in style:
+                                html_content += f"<h2>{text}</h2>"
+                            elif "heading 3" in style:
+                                html_content += f"<h3>{text}</h3>"
+                            else:
+                                runs_html = ""
+                                for run in para.runs:
+                                    run_text = run.text.replace("\n", "<br>")
+                                    if run.bold:
+                                        run_text = f"<b>{run_text}</b>"
+                                    if run.italic:
+                                        run_text = f"<i>{run_text}</i>"
+                                    if run.underline:
+                                        run_text = f"<u>{run_text}</u>"
+                                    runs_html += run_text
+                                html_content += f"<p>{runs_html}</p>"
+
+                    # Flush any remaining list at the end
+                    flush_list()
+
+                    # Parse tables
                     for table in doc.tables:
                         html_content += "<table border='1' style='border-collapse: collapse; margin-bottom: 10px;'>"
                         for row in table.rows:
@@ -94,7 +147,7 @@ def load_description_from_file(req_id):
                             html_content += "</tr>"
                         html_content += "</table><br>"
 
-                    # --- Extract images (block diagrams etc.) ---
+                    # Extract images (block diagrams etc.)
                     rels = doc.part.rels
                     for rel in rels.values():
                         if rel.reltype == RT.IMAGE:
@@ -104,7 +157,7 @@ def load_description_from_file(req_id):
                                 img = Image.open(image_stream)
                                 images.append(img)
                             except Exception:
-                                continue  # Skip unreadable images
+                                continue
 
                     return {
                         "html": html_content,
