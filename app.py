@@ -82,8 +82,9 @@ def paragraph_to_html(paragraph):
         html += text
     return html
 
-# --- Determine list info and safe numbering type ---
+# --- Determine list info and safe numbering type with true bullets ---
 def get_list_info(paragraph):
+    # Check numbering properties
     numPr = paragraph._p.xpath('./w:pPr/w:numPr')
     if numPr:
         ilvl = int(numPr[0].xpath('./w:ilvl')[0].get(qn('w:val')))
@@ -104,11 +105,23 @@ def get_list_info(paragraph):
                                 if fmt_element:
                                     num_format = fmt_element[0].get(qn('w:val'))
                         break
+
+        # Force bullets if style name indicates bullet
+        if paragraph.style.name.lower().startswith("bullet"):
+            num_format = "bullet"
+
         return ilvl, numId, num_format
 
-    # fallback for bullet style
+    # Fallback for bullet styles
     if paragraph.style.name.lower().startswith("bullet"):
         return 0, -1, "bullet"
+
+    # Check for List Paragraph style with bullet characters
+    if "list paragraph" in paragraph.style.name.lower():
+        text = paragraph.text.strip()
+        if text.startswith("•") or text.startswith("–") or text.startswith("·"):
+            return 0, -1, "bullet"
+
     return None, None, None
 
 # --- Render Word document exactly ---
