@@ -82,25 +82,31 @@ def paragraph_to_html(paragraph):
         html += text
     return html
 
-# --- Determine list info and true numbering type ---
+# --- Determine list info and safe numbering type ---
 def get_list_info(paragraph):
     numPr = paragraph._p.xpath('./w:pPr/w:numPr')
     if numPr:
         ilvl = int(numPr[0].xpath('./w:ilvl')[0].get(qn('w:val')))
         numId = int(numPr[0].xpath('./w:numId')[0].get(qn('w:val')))
-        # Detect numbering format
         num_format = "decimal"  # default
-        numbering_part = paragraph.part.numbering_part
+
+        numbering_part = getattr(paragraph.part, "numbering_part", None)
         if numbering_part:
-            numbering = numbering_part.numbering_definitions._numbering
-            for num in numbering.num_lst:
-                if num.numId == numId:
-                    lvl = num.abstractNum.xpath('./w:lvl')[ilvl]
-                    fmt = lvl.xpath('./w:numFmt')[0].get(qn('w:val'))
-                    num_format = fmt  # e.g., bullet, decimal, lowerLetter
-                    break
+            numbering = getattr(numbering_part.numbering_definitions, "_numbering", None)
+            if numbering:
+                for num in getattr(numbering, "num_lst", []):
+                    if getattr(num, "numId", None) == numId:
+                        abstract_num = getattr(num, "abstractNum", None)
+                        if abstract_num:
+                            lvls = abstract_num.xpath('./w:lvl')
+                            if ilvl < len(lvls):
+                                fmt_element = lvls[ilvl].xpath('./w:numFmt')
+                                if fmt_element:
+                                    num_format = fmt_element[0].get(qn('w:val'))
+                        break
         return ilvl, numId, num_format
-    # Check if style explicitly named bullet
+
+    # fallback for bullet style
     if paragraph.style.name.lower().startswith("bullet"):
         return 0, -1, "bullet"
     return None, None, None
@@ -156,7 +162,6 @@ def render_word_doc(filename):
                     prefix = f"{int_to_roman(numbering_counters[numId][level])}) "
                 else:
                     prefix = f"{numbering_counters[numId][level]}) "
-            # Bullets get no prefix
 
             # Close higher or same level lists
             close_lists_to_level(level)
