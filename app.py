@@ -18,12 +18,9 @@ st.markdown("""
         table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table, th, td { border: 1px solid black; }
         td { padding: 6px; }
-        ol { list-style-type: none; margin-left: 1.5em; padding-left: 1.5em; }  /* numbered lists use custom prefix */
-        ul { list-style-type: disc; margin-left: 1.5em; padding-left: 1.5em; } /* bullets */
-        ul ul { list-style-type: circle; }       /* level 1 nested bullets */
-        ul ul ul { list-style-type: square; }    /* level 2 nested bullets */
         img { max-width: 100%; height: auto; margin-top: 10px; }
         pre { white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
+        li { margin-bottom: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -82,45 +79,21 @@ def paragraph_to_html(paragraph):
         html += text
     return html
 
-# --- Determine list info and safe numbering type with true bullets ---
+# --- Determine list info and type ---
 def get_list_info(paragraph):
-    # Check numbering properties
     numPr = paragraph._p.xpath('./w:pPr/w:numPr')
     if numPr:
         ilvl = int(numPr[0].xpath('./w:ilvl')[0].get(qn('w:val')))
         numId = int(numPr[0].xpath('./w:numId')[0].get(qn('w:val')))
-        num_format = "decimal"  # default
+        num_format = "decimal"
 
-        numbering_part = getattr(paragraph.part, "numbering_part", None)
-        if numbering_part:
-            numbering = getattr(numbering_part.numbering_definitions, "_numbering", None)
-            if numbering:
-                for num in getattr(numbering, "num_lst", []):
-                    if getattr(num, "numId", None) == numId:
-                        abstract_num = getattr(num, "abstractNum", None)
-                        if abstract_num:
-                            lvls = abstract_num.xpath('./w:lvl')
-                            if ilvl < len(lvls):
-                                fmt_element = lvls[ilvl].xpath('./w:numFmt')
-                                if fmt_element:
-                                    num_format = fmt_element[0].get(qn('w:val'))
-                        break
-
-        # Force bullets if style name indicates bullet
         if paragraph.style.name.lower().startswith("bullet"):
             num_format = "bullet"
 
         return ilvl, numId, num_format
 
-    # Fallback for bullet styles
     if paragraph.style.name.lower().startswith("bullet"):
         return 0, -1, "bullet"
-
-    # Check for List Paragraph style with bullet characters
-    if "list paragraph" in paragraph.style.name.lower():
-        text = paragraph.text.strip()
-        if text.startswith("•") or text.startswith("–") or text.startswith("·"):
-            return 0, -1, "bullet"
 
     return None, None, None
 
@@ -128,8 +101,8 @@ def get_list_info(paragraph):
 def render_word_doc(filename):
     doc = Document(filename)
     html_content = ""
-    open_lists = []  # stack: (tag, level)
-    numbering_counters = {}  # numId -> {level: counter}
+    open_lists = []
+    numbering_counters = {}
 
     def close_lists_to_level(level):
         nonlocal html_content
@@ -137,12 +110,14 @@ def render_word_doc(filename):
             tag, lvl = open_lists.pop()
             html_content += f"</{tag}>"
 
+    # Bullet characters for each level
+    bullet_chars = ["•", "◦", "▪"]
+
     for paragraph in doc.paragraphs:
         text = paragraph_to_html(paragraph).strip()
         if text == "":
             continue
 
-        # Headings
         if paragraph.style.name.startswith("Heading"):
             close_lists_to_level(0)
             html_content += f"<h3>{text}</h3>"
@@ -156,17 +131,16 @@ def render_word_doc(filename):
             if level not in numbering_counters[numId]:
                 numbering_counters[numId][level] = 0
             numbering_counters[numId][level] += 1
-            # reset deeper levels
             for l in range(level+1, 10):
                 if l in numbering_counters[numId]:
                     numbering_counters[numId][l] = 0
 
-            # Determine list tag
-            tag = "ul" if num_format == "bullet" else "ol"
-
-            # Determine prefix for numbered lists only
-            prefix = ""
-            if tag == "ol":
+            # --- Use <ul> for bullets, <ol> for numbers ---
+            if num_format.lower() == "bullet":
+                tag = "ul"
+                prefix = bullet_chars[level] + " " if level < len(bullet_chars) else "• "
+            else:
+                tag = "ol"
                 if level == 0:
                     prefix = f"{numbering_counters[numId][level]}) "
                 elif level == 1:
@@ -176,10 +150,8 @@ def render_word_doc(filename):
                 else:
                     prefix = f"{numbering_counters[numId][level]}) "
 
-            # Close higher or same level lists
             close_lists_to_level(level)
 
-            # Open new list if needed
             if not open_lists or open_lists[-1][1] < level or open_lists[-1][0] != tag:
                 html_content += f"<{tag}>"
                 open_lists.append((tag, level))
@@ -190,7 +162,6 @@ def render_word_doc(filename):
             close_lists_to_level(0)
             html_content += f"<p>{text}</p>"
 
-    # Close remaining lists
     close_lists_to_level(0)
 
     # Tables
@@ -231,7 +202,6 @@ if df is not None:
 
     id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
 
-    # --- User Input ---
     user_input = st.text_input("Enter the Requirement ID (e.g. FREQ-1):").strip()
     if user_input:
         user_input_upper = user_input.upper()
