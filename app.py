@@ -18,9 +18,10 @@ st.markdown("""
         table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table, th, td { border: 1px solid black; }
         td { padding: 6px; }
+        ol, ul { list-style-type: none; margin: 0; padding: 0; }
+        li { margin-bottom: 5px; }
         img { max-width: 100%; height: auto; margin-top: 10px; }
         pre { white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
-        li { margin-bottom: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -45,26 +46,6 @@ def read_requirements_file():
         st.error(f"Failed to read requirements file: {e}")
         return None
 
-# --- Convert PIL image to base64 HTML ---
-def pil_image_to_base64_html(pil_img):
-    buffer = BytesIO()
-    pil_img.save(buffer, format="PNG")
-    b64_str = base64.b64encode(buffer.getvalue()).decode()
-    return f'<img src="data:image/png;base64,{b64_str}" />'
-
-# --- Convert integer to roman numeral ---
-def int_to_roman(num):
-    val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
-    syms = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
-    roman_num = ''
-    i = 0
-    while num > 0:
-        for _ in range(num // val[i]):
-            roman_num += syms[i]
-            num -= val[i]
-        i += 1
-    return roman_num.lower()
-
 # --- Convert paragraph runs to HTML (bold, italic, underline) ---
 def paragraph_to_html(paragraph):
     html = ""
@@ -79,6 +60,19 @@ def paragraph_to_html(paragraph):
         html += text
     return html
 
+# --- Convert integer to roman numeral ---
+def int_to_roman(num):
+    val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
+    syms = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
+    roman_num = ''
+    i = 0
+    while num > 0:
+        for _ in range(num // val[i]):
+            roman_num += syms[i]
+            num -= val[i]
+        i += 1
+    return roman_num.lower()
+
 # --- Determine list info and type ---
 def get_list_info(paragraph):
     numPr = paragraph._p.xpath('./w:pPr/w:numPr')
@@ -86,18 +80,21 @@ def get_list_info(paragraph):
         ilvl = int(numPr[0].xpath('./w:ilvl')[0].get(qn('w:val')))
         numId = int(numPr[0].xpath('./w:numId')[0].get(qn('w:val')))
         num_format = "decimal"
-
         if paragraph.style.name.lower().startswith("bullet"):
             num_format = "bullet"
-
         return ilvl, numId, num_format
-
     if paragraph.style.name.lower().startswith("bullet"):
         return 0, -1, "bullet"
-
     return None, None, None
 
-# --- Render Word document exactly ---
+# --- Convert PIL image to base64 HTML ---
+def pil_image_to_base64_html(pil_img):
+    buffer = BytesIO()
+    pil_img.save(buffer, format="PNG")
+    b64_str = base64.b64encode(buffer.getvalue()).decode()
+    return f'<img src="data:image/png;base64,{b64_str}" />'
+
+# --- Render Word document exactly (dynamic bullets, exact indentation) ---
 def render_word_doc(filename):
     doc = Document(filename)
     html_content = ""
@@ -110,8 +107,8 @@ def render_word_doc(filename):
             tag, lvl = open_lists.pop()
             html_content += f"</{tag}>"
 
-    # Bullet characters for each level
-    bullet_chars = ["•", "◦", "▪"]
+    # Dynamic bullet characters for any depth
+    base_bullets = ["•", "◦", "▪"]
 
     for paragraph in doc.paragraphs:
         text = paragraph_to_html(paragraph).strip()
@@ -131,14 +128,15 @@ def render_word_doc(filename):
             if level not in numbering_counters[numId]:
                 numbering_counters[numId][level] = 0
             numbering_counters[numId][level] += 1
-            for l in range(level+1, 10):
+            for l in range(level+1, 50):
                 if l in numbering_counters[numId]:
                     numbering_counters[numId][l] = 0
 
-            # --- Use <ul> for bullets, <ol> for numbers ---
+            # Decide tag and prefix
             if num_format.lower() == "bullet":
                 tag = "ul"
-                prefix = bullet_chars[level] + " " if level < len(bullet_chars) else "• "
+                bullet_char = base_bullets[level % len(base_bullets)]
+                prefix = f"{bullet_char} "
             else:
                 tag = "ol"
                 if level == 0:
@@ -156,7 +154,9 @@ def render_word_doc(filename):
                 html_content += f"<{tag}>"
                 open_lists.append((tag, level))
 
-            html_content += f"<li>{prefix}{text}</li>"
+            # --- Exact indentation per level ---
+            indent_px = 20 * (level + 1)  # adjust 20px per level if needed
+            html_content += f'<li style="padding-left:{indent_px}px">{prefix}{text}</li>'
 
         else:
             close_lists_to_level(0)
