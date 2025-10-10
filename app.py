@@ -1,36 +1,27 @@
 import streamlit as st
+import pandas as pd
+import os
 from docx import Document
-from docx.oxml.ns import qn
 from io import BytesIO
 from PIL import Image
 import base64
-import pandas as pd
-import os
+import openai
+import json
 
-# --- Streamlit Setup ---
-st.set_page_config(page_title="DVT Test Planner", layout="wide")
+# ---------------- Streamlit Setup ----------------
+st.set_page_config(page_title="DVT Test Planner with AI", layout="wide")
 
-st.markdown("""
-    <style>
-        .main .block-container { max-width: 60%; padding-left: 6rem; padding-right: 6rem; }
-        .reportview-container .main { font-family: "Times New Roman", Times, serif; font-size: 20px; line-height: 1.5; }
-        h1, h2, h3 { color: #003366; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-        table, th, td { border: 1px solid black; }
-        td { padding: 6px; }
-        ol, ul { list-style-type: none; margin: 0; padding: 0; }
-        li { margin-bottom: 4px; line-height: 1.5; }
-        img { max-width: 60%; height: auto; margin: 5px 0; }
-        pre { white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
-    </style>
-""", unsafe_allow_html=True)
+st.title("Design Verification Testing (DVT) Test Planner with AI Coverage Analysis")
 
-st.title("Design Verification Testing (DVT) Test Planner")
+# ---------------- OpenAI Setup ----------------
+# Make sure you set your API key in the environment:
+# export OPENAI_API_KEY="your-key"
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# --- Configurable Requirements File ---
-REQUIREMENTS_FILE = "dvt_requirements.csv"
+# ---------------- File Config ----------------
+REQUIREMENTS_FILE = "dvt_requirements.csv"  # contains your taxonomy in column 4
 
-# --- Read Requirements File ---
+# ---------------- Read Requirements ----------------
 def read_requirements_file():
     try:
         if REQUIREMENTS_FILE.endswith(".csv"):
@@ -40,185 +31,119 @@ def read_requirements_file():
         elif REQUIREMENTS_FILE.endswith(".xls"):
             return pd.read_excel(REQUIREMENTS_FILE, engine="xlrd")
         else:
-            st.error("Unsupported file format.")
+            st.error("Unsupported requirements file format.")
             return None
     except Exception as e:
         st.error(f"Failed to read requirements file: {e}")
         return None
 
-# --- Convert paragraph runs to HTML (bold, italic, underline) ---
-def paragraph_to_html(paragraph):
-    html = ""
-    for run in paragraph.runs:
-        text = run.text.replace("\n", "<br>")
-        if run.bold:
-            text = f"<b>{text}</b>"
-        if run.italic:
-            text = f"<i>{text}</i>"
-        if run.underline:
-            text = f"<u>{text}</u>"
-        html += text
-    return html
+# ---------------- Word Parsing ----------------
+def docx_to_text(file):
+    doc = Document(file)
+    text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+    return text
 
-# --- Convert integer to roman numeral ---
-def int_to_roman(num):
-    val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
-    syms = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
-    roman_num = ''
-    i = 0
-    while num > 0:
-        for _ in range(num // val[i]):
-            roman_num += syms[i]
-            num -= val[i]
-        i += 1
-    return roman_num.lower()
+def txt_to_text(file):
+    return file.read().decode("utf-8")
 
-# --- Determine list info and type ---
-def get_list_info(paragraph):
-    numPr = paragraph._p.xpath('./w:pPr/w:numPr')
-    if numPr:
-        ilvl = int(numPr[0].xpath('./w:ilvl')[0].get(qn('w:val')))
-        numId = int(numPr[0].xpath('./w:numId')[0].get(qn('w:val')))
-        num_format = "decimal"
-        if paragraph.style.name.lower().startswith("bullet"):
-            num_format = "bullet"
-        return ilvl, numId, num_format
-    if paragraph.style.name.lower().startswith("bullet"):
-        return 0, -1, "bullet"
-    return None, None, None
+# ---------------- JSON Structuring ----------------
+def parse_plan_to_json(text):
+    """
+    A simple parser: split by newlines and guess sections.
+    Later you can make this more advanced by using regex or headings.
+    """
+    plan_dict = {"sections": []}
+    lines = text.split("\n")
+    current_section = {"title": "", "content": []}
 
-# --- Convert PIL image to base64 HTML ---
-def pil_image_to_base64_html(pil_img, width_percent=60):
-    buffer = BytesIO()
-    pil_img.save(buffer, format="PNG")
-    b64_str = base64.b64encode(buffer.getvalue()).decode()
-    return f'<img src="data:image/png;base64,{b64_str}" style="max-width:{width_percent}%; height:auto; margin:5px 0;" />'
-
-# --- Render Word document exactly (dynamic bullets, Word-style indentation, small images) ---
-def render_word_doc(filename):
-    doc = Document(filename)
-    html_content = ""
-    open_lists = []
-    numbering_counters = {}
-
-    def close_lists_to_level(level):
-        nonlocal html_content
-        while open_lists and open_lists[-1][1] >= level:
-            tag, lvl = open_lists.pop()
-            html_content += f"</{tag}>"
-
-    base_bullets = ["•", "◦", "▪"]
-
-    for paragraph in doc.paragraphs:
-        text = paragraph_to_html(paragraph).strip()
-        if text == "":
+    for line in lines:
+        if line.strip() == "":
             continue
-
-        if paragraph.style.name.startswith("Heading"):
-            close_lists_to_level(0)
-            html_content += f"<h3>{text}</h3>"
-            continue
-
-        level, numId, num_format = get_list_info(paragraph)
-
-        if level is not None:
-            if numId not in numbering_counters:
-                numbering_counters[numId] = {}
-            if level not in numbering_counters[numId]:
-                numbering_counters[numId][level] = 0
-            numbering_counters[numId][level] += 1
-            for l in range(level+1, 50):
-                if l in numbering_counters[numId]:
-                    numbering_counters[numId][l] = 0
-
-            # Decide tag and prefix
-            if num_format.lower() == "bullet":
-                tag = "ul"
-                bullet_char = base_bullets[level % len(base_bullets)]
-                prefix = f"{bullet_char} "
-            else:
-                tag = "ol"
-                if level == 0:
-                    prefix = f"{numbering_counters[numId][level]}) "
-                elif level == 1:
-                    prefix = f"{chr(96 + numbering_counters[numId][level])}) "
-                elif level == 2:
-                    prefix = f"{int_to_roman(numbering_counters[numId][level])}) "
-                else:
-                    prefix = f"{numbering_counters[numId][level]}) "
-
-            close_lists_to_level(level)
-
-            if not open_lists or open_lists[-1][1] < level or open_lists[-1][0] != tag:
-                html_content += f"<{tag}>"
-                open_lists.append((tag, level))
-
-            # Word-style indentation
-            indent_px = 36 * level
-            html_content += f'<li style="padding-left:{indent_px}px">{prefix}{text}</li>'
-
+        if line.endswith(":"):  # treat as section header
+            if current_section["title"]:
+                plan_dict["sections"].append(current_section)
+            current_section = {"title": line.strip(), "content": []}
         else:
-            close_lists_to_level(0)
-            html_content += f"<p>{text}</p>"
+            current_section["content"].append(line.strip())
 
-    close_lists_to_level(0)
+    if current_section["title"]:
+        plan_dict["sections"].append(current_section)
 
-    # Tables
-    for table in doc.tables:
-        table_html = "<table>"
-        for row in table.rows:
-            table_html += "<tr>"
-            for cell in row.cells:
-                cell_text = ""
-                for para in cell.paragraphs:
-                    cell_text += paragraph_to_html(para).strip() + "<br>"
-                table_html += f"<td>{cell_text}</td>"
-            table_html += "</tr>"
-        table_html += "</table><br>"
-        html_content += table_html
+    return plan_dict
 
-    # Images
-    for rel in doc.part.rels.values():
-        if "image" in rel.reltype:
-            try:
-                img = Image.open(BytesIO(rel.target_part.blob))
-                html_content += pil_image_to_base64_html(img, width_percent=60)
-            except:
-                continue
+# ---------------- AI Coverage Analysis ----------------
+def analyze_coverage(plan_json, taxonomy_rules):
+    prompt = f"""
+You are a senior validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
+Compare the test plan against the taxonomy and identify strengths, gaps, and suggestions.
 
-    return html_content
+Taxonomy of Required Tests:
+{taxonomy_rules}
 
-# --- Load Requirements ---
+Proposed Test Plan (JSON):
+{json.dumps(plan_json, indent=2)}
+
+Respond with three sections:
+1. Strengths (covered tests)
+2. Gaps (missing tests)
+3. Suggestions (improvements for full coverage)
+"""
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",  # use "gpt-4o" for deeper reasoning
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2
+    )
+    return response["choices"][0]["message"]["content"]
+
+# ---------------- Main UI ----------------
 df = read_requirements_file()
 if df is not None:
     df.columns = [str(col).strip() for col in df.columns]
+
     try:
         requirement_ids = df.iloc[:, 0].astype(str).tolist()
         descriptions = df.iloc[:, 2].astype(str).tolist()
+        taxonomy_col = df.iloc[:, 3].astype(str).tolist()  # taxonomy in column 4
     except IndexError:
-        st.error("Requirements file must have at least 3 columns (ID in column 1, Description in column 3).")
+        st.error("Requirements file must have at least 4 columns (ID, ..., Description, Taxonomy).")
         st.stop()
 
     id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
+    id_to_taxonomy = {rid.upper(): tax for rid, tax in zip(requirement_ids, taxonomy_col)}
 
+    # User enters requirement ID
     user_input = st.text_input("Enter the Requirement ID (e.g. FREQ-1):").strip()
-    if user_input:
+
+    # User uploads test plan
+    uploaded_file = st.file_uploader("Upload Proposed Test Plan (.docx or .txt)", type=["docx", "txt"])
+
+    if user_input and uploaded_file:
         user_input_upper = user_input.upper()
         if user_input_upper in id_to_description:
             matched_description = id_to_description[user_input_upper]
-            st.success(f"**{user_input}**\n\n**Description:** {matched_description}")
+            matched_taxonomy = id_to_taxonomy.get(user_input_upper, "No taxonomy found for this requirement.")
+            
+            st.success(f"**{user_input_upper}**\n\n**Description:** {matched_description}")
 
-            docx_file = f"{user_input_upper}.docx"
-            txt_file = f"{user_input_upper}.txt"
-
-            if os.path.isfile(docx_file):
-                html_content = render_word_doc(docx_file)
-                st.markdown(html_content, unsafe_allow_html=True)
-            elif os.path.isfile(txt_file):
-                with open(txt_file, "r", encoding="utf-8") as f:
-                    st.markdown(f"<pre>{f.read()}</pre>", unsafe_allow_html=True)
+            # Extract text from file
+            if uploaded_file.name.endswith(".docx"):
+                plan_text = docx_to_text(uploaded_file)
             else:
-                st.warning(f"No `.docx` or `.txt` file found for `{user_input_upper}`.")
+                plan_text = txt_to_text(uploaded_file)
+
+            # Parse to JSON
+            plan_json = parse_plan_to_json(plan_text)
+
+            st.subheader("Parsed Test Plan (JSON)")
+            st.json(plan_json)
+
+            # Run AI Analysis using taxonomy from column 4
+            if st.button("Analyze Test Coverage"):
+                with st.spinner("Analyzing coverage with AI..."):
+                    analysis = analyze_coverage(plan_json, matched_taxonomy)
+                st.subheader("AI Coverage Analysis")
+                st.markdown(analysis)
+
         else:
             st.error("No match found for that Requirement ID.")
 else:
