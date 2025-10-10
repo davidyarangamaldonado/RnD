@@ -6,6 +6,7 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from io import BytesIO
 from PIL import Image
 import mammoth
+import base64
 
 # --- Streamlit Page Setup ---
 st.set_page_config(page_title="Design Verification Testing (DVT) Test Planner", layout="wide")
@@ -64,7 +65,6 @@ st.title("Design Verification Testing (DVT) Test Planner")
 # --- Configurable Requirements File ---
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
 
-
 # --- Load Description (Word/Text with formatting, bullets, numbering, tables, and images) ---
 def load_description_from_file(req_id):
     for ext in [".docx", ".txt"]:
@@ -72,39 +72,43 @@ def load_description_from_file(req_id):
         if os.path.isfile(filename):
             try:
                 if ext == ".docx":
-                    html_content = ""
-                    images = []
+                    images_dict = {}
 
-                    # --- 1) Use Mammoth for main text with bullets & numbering ---
+                    # --- 1) Use Mammoth with custom image handler ---
+                    def mammoth_image_handler(image):
+                        image_bytes = image.read()
+                        img = Image.open(BytesIO(image_bytes))
+                        images_dict[len(images_dict)+1] = img
+                        # Return placeholder HTML (we'll replace later)
+                        return {"src": f"__IMAGE_{len(images_dict)}__"}
+
                     with open(filename, "rb") as docx_file:
-                        result = mammoth.convert_to_html(docx_file)
+                        result = mammoth.convert_to_html(docx_file, convert_image=mammoth_image_handler)
                         html_content = result.value
 
-                    # --- 2) Use python-docx for tables & images ---
-                    doc = Document(filename)
+                    # --- 2) Replace placeholders with inline base64 images ---
+                    final_html = html_content
+                    images_list = list(images_dict.values())
+                    for idx, img in enumerate(images_list):
+                        buffer = BytesIO()
+                        img.save(buffer, format="PNG")
+                        b64_str = base64.b64encode(buffer.getvalue()).decode()
+                        final_html = final_html.replace(f"__IMAGE_{idx+1}__", f'<img src="data:image/png;base64,{b64_str}" />')
 
-                    # Extract tables
+                    # --- 3) Append tables using python-docx (optional, if Mammoth missed any) ---
+                    doc = Document(filename)
                     for table in doc.tables:
-                        html_content += "<table>"
+                        table_html = "<table>"
                         for row in table.rows:
-                            html_content += "<tr>"
+                            table_html += "<tr>"
                             for cell in row.cells:
                                 cell_text = cell.text.strip().replace("\n", "<br>")
-                                html_content += f"<td>{cell_text}</td>"
-                            html_content += "</tr>"
-                        html_content += "</table><br>"
+                                table_html += f"<td>{cell_text}</td>"
+                            table_html += "</tr>"
+                        table_html += "</table><br>"
+                        final_html += table_html
 
-                    # Extract images (store as PIL objects)
-                    for rel in doc.part.rels.values():
-                        if rel.reltype == RT.IMAGE:
-                            image_data = rel.target_part.blob
-                            try:
-                                img = Image.open(BytesIO(image_data))
-                                images.append(img)
-                            except Exception:
-                                continue
-
-                    return {"html": html_content, "images": images}
+                    return {"html": final_html, "images": images_list}
 
                 else:  # .txt fallback
                     with open(filename, "r", encoding="utf-8") as file:
@@ -121,7 +125,6 @@ def load_description_from_file(req_id):
 
     return None
 
-
 # --- Read Requirements File ---
 def read_requirements_file():
     try:
@@ -137,7 +140,6 @@ def read_requirements_file():
     except Exception as e:
         st.error(f"Failed to read requirements file: {e}")
         return None
-
 
 # --- Load and Process Data ---
 df = read_requirements_file()
@@ -167,13 +169,9 @@ if df is not None:
 
             if test_description:
                 st.subheader("DVT Test Description")
-                # ✅ Render formatted HTML (lists, tables)
+                # ✅ Render formatted HTML (lists, tables, and images inline)
                 st.markdown(test_description["html"], unsafe_allow_html=True)
 
-                # ✅ Show extracted images separately (instead of inline <img>)
-                if test_description["images"]:
-                    for idx, img in enumerate(test_description["images"]):
-                        st.image(img, caption=f"Figure {idx + 1}", use_container_width=True)
             else:
                 st.warning(
                     f"No `.docx` or `.txt` file found for `{user_input}` "
