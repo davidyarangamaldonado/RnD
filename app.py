@@ -74,28 +74,28 @@ def load_description_from_file(req_id):
                 if ext == ".docx":
                     images_dict = {}
 
-                    # --- 1) Use Mammoth with custom image handler ---
-                    def mammoth_image_handler(image):
-                        image_bytes = image.read()
-                        img = Image.open(BytesIO(image_bytes))
-                        images_dict[len(images_dict)+1] = img
-                        # Return placeholder HTML (we'll replace later)
+                    # --- Mammoth image handler ---
+                    def mammoth_image_handler(m_image):
+                        image_bytes = m_image.read()  # correct for Mammoth
+                        pil_img = Image.open(BytesIO(image_bytes))  # PIL Image
+                        images_dict[len(images_dict)+1] = pil_img
+                        # Return placeholder HTML
                         return {"src": f"__IMAGE_{len(images_dict)}__"}
 
                     with open(filename, "rb") as docx_file:
                         result = mammoth.convert_to_html(docx_file, convert_image=mammoth_image_handler)
                         html_content = result.value
 
-                    # --- 2) Replace placeholders with inline base64 images ---
+                    # --- Replace placeholders with base64 inline images ---
                     final_html = html_content
                     images_list = list(images_dict.values())
-                    for idx, img in enumerate(images_list):
+                    for idx, pil_img in enumerate(images_list):
                         buffer = BytesIO()
-                        img.save(buffer, format="PNG")
+                        pil_img.save(buffer, format="PNG")
                         b64_str = base64.b64encode(buffer.getvalue()).decode()
                         final_html = final_html.replace(f"__IMAGE_{idx+1}__", f'<img src="data:image/png;base64,{b64_str}" />')
 
-                    # --- 3) Append tables using python-docx (optional, if Mammoth missed any) ---
+                    # --- Append tables using python-docx (optional if Mammoth misses them) ---
                     doc = Document(filename)
                     for table in doc.tables:
                         table_html = "<table>"
