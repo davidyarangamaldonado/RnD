@@ -6,6 +6,7 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from io import BytesIO
 from PIL import Image
 import mammoth
+import base64
 
 # --- Streamlit Page Setup ---
 st.set_page_config(page_title="Design Verification Testing (DVT) Test Planner", layout="wide")
@@ -92,7 +93,7 @@ def load_description_from_file(req_id):
                             html_content += "</tr>"
                         html_content += "</table><br>"
 
-                    # --- 3) Extract images using python-docx ---
+                    # --- 3) Extract images and embed inline ---
                     rels = doc.part.rels
                     for rel in rels.values():
                         if rel.reltype == RT.IMAGE:
@@ -101,6 +102,15 @@ def load_description_from_file(req_id):
                             try:
                                 img = Image.open(image_stream)
                                 images.append(img)
+
+                                # Encode as base64 for inline HTML
+                                buffered = BytesIO()
+                                img.save(buffered, format="PNG")
+                                img_str = base64.b64encode(buffered.getvalue()).decode()
+                                html_content += (
+                                    f'<div><img src="data:image/png;base64,{img_str}" '
+                                    f'style="max-width:100%;height:auto;"/></div><br>'
+                                )
                             except Exception:
                                 continue
 
@@ -168,8 +178,9 @@ if df is not None:
                 st.markdown(test_description["html"], unsafe_allow_html=True)
 
                 if test_description["images"]:
+                    st.write("📷 Extracted Images:")
                     for idx, img in enumerate(test_description["images"]):
-                        st.image(img, caption=f"Figure {idx + 1}", width=500)
+                        st.image(img, caption=f"Figure {idx + 1}", use_container_width=True)
             else:
                 st.warning(
                     f"No `.docx` or `.txt` file found for `{user_input}` "
