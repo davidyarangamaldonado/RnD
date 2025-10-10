@@ -68,17 +68,6 @@ def int_to_roman(num):
         i += 1
     return roman_num.lower()
 
-# --- Determine list info ---
-def get_list_info(paragraph):
-    numPr = paragraph._p.xpath('./w:pPr/w:numPr')
-    if numPr:
-        ilvl = int(numPr[0].xpath('./w:ilvl')[0].get(qn('w:val')))
-        numId = int(numPr[0].xpath('./w:numId')[0].get(qn('w:val')))
-        return ilvl, numId
-    if paragraph.style.name.lower().startswith("bullet"):
-        return 0, -1  # bullet
-    return None, None
-
 # --- Convert paragraph runs to HTML (bold, italic, underline) ---
 def paragraph_to_html(paragraph):
     html = ""
@@ -92,6 +81,29 @@ def paragraph_to_html(paragraph):
             text = f"<u>{text}</u>"
         html += text
     return html
+
+# --- Determine list info and true numbering type ---
+def get_list_info(paragraph):
+    numPr = paragraph._p.xpath('./w:pPr/w:numPr')
+    if numPr:
+        ilvl = int(numPr[0].xpath('./w:ilvl')[0].get(qn('w:val')))
+        numId = int(numPr[0].xpath('./w:numId')[0].get(qn('w:val')))
+        # Detect numbering format
+        num_format = "decimal"  # default
+        numbering_part = paragraph.part.numbering_part
+        if numbering_part:
+            numbering = numbering_part.numbering_definitions._numbering
+            for num in numbering.num_lst:
+                if num.numId == numId:
+                    lvl = num.abstractNum.xpath('./w:lvl')[ilvl]
+                    fmt = lvl.xpath('./w:numFmt')[0].get(qn('w:val'))
+                    num_format = fmt  # e.g., bullet, decimal, lowerLetter
+                    break
+        return ilvl, numId, num_format
+    # Check if style explicitly named bullet
+    if paragraph.style.name.lower().startswith("bullet"):
+        return 0, -1, "bullet"
+    return None, None, None
 
 # --- Render Word document exactly ---
 def render_word_doc(filename):
@@ -117,7 +129,7 @@ def render_word_doc(filename):
             html_content += f"<h3>{text}</h3>"
             continue
 
-        level, numId = get_list_info(paragraph)
+        level, numId, num_format = get_list_info(paragraph)
 
         if level is not None:
             if numId not in numbering_counters:
@@ -131,7 +143,7 @@ def render_word_doc(filename):
                     numbering_counters[numId][l] = 0
 
             # Determine list tag
-            tag = "ul" if numId == -1 else "ol"
+            tag = "ul" if num_format == "bullet" else "ol"
 
             # Determine prefix for numbered lists only
             prefix = ""
@@ -144,7 +156,7 @@ def render_word_doc(filename):
                     prefix = f"{int_to_roman(numbering_counters[numId][level])}) "
                 else:
                     prefix = f"{numbering_counters[numId][level]}) "
-            # Bullets (ul) get no prefix
+            # Bullets get no prefix
 
             # Close higher or same level lists
             close_lists_to_level(level)
