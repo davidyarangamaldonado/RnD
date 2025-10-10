@@ -18,7 +18,7 @@ st.markdown("""
         table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table, th, td { border: 1px solid black; }
         td { padding: 6px; }
-        ol, ul { margin-left: 1.5em; }
+        ol, ul { margin-left: 1.5em; list-style-type: none; padding-left: 1.5em; } /* Remove default numbering/bullets */
         img { max-width: 100%; height: auto; margin-top: 10px; }
         pre { white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
     </style>
@@ -54,17 +54,8 @@ def pil_image_to_base64_html(pil_img):
 
 # --- Convert integer to roman numeral ---
 def int_to_roman(num):
-    val = [
-        1000, 900, 500, 400,
-        100, 90, 50, 40,
-        10, 9, 5, 4, 1
-    ]
-    syms = [
-        "M", "CM", "D", "CD",
-        "C", "XC", "L", "XL",
-        "X", "IX", "V", "IV",
-        "I"
-    ]
+    val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
+    syms = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
     roman_num = ''
     i = 0
     while num > 0:
