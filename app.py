@@ -73,26 +73,28 @@ def load_description_from_file(req_id):
                 if ext == ".docx":
                     html_content = ""
 
-                    # --- 1) Use Mammoth for main text with bullets & numbering ---
-                    with open(filename, "rb") as docx_file:
-                        result = mammoth.convert_to_html(docx_file)
-                        html_content = result.value
-
-                    # --- 2) Use python-docx for tables & images ---
                     doc = Document(filename)
 
-                    # Extract tables
-                    for table in doc.tables:
-                        html_content += "<table>"
-                        for row in table.rows:
-                            html_content += "<tr>"
-                            for cell in row.cells:
-                                cell_text = cell.text.strip().replace("\n", "<br>")
-                                html_content += f"<td>{cell_text}</td>"
-                            html_content += "</tr>"
-                        html_content += "</table><br>"
+                    # --- Walk through document elements ---
+                    for block in doc.element.body:
+                        if block.tag.endswith("p"):  # Paragraph
+                            para = doc.paragraphs[doc.element.body.index(block)]
+                            text = para.text.strip()
+                            if text:
+                                html_content += f"<p>{text}</p>"
 
-                    # Extract images and embed directly in HTML
+                        elif block.tag.endswith("tbl"):  # Table
+                            table = doc.tables[doc.element.body.index(block)]
+                            html_content += "<table>"
+                            for row in table.rows:
+                                html_content += "<tr>"
+                                for cell in row.cells:
+                                    cell_text = cell.text.strip().replace("\n", "<br>")
+                                    html_content += f"<td>{cell_text}</td>"
+                                html_content += "</tr>"
+                            html_content += "</table><br>"
+
+                    # --- Extract images ---
                     for rel in doc.part.rels.values():
                         if rel.reltype == RT.IMAGE:
                             image_data = rel.target_part.blob
@@ -117,6 +119,7 @@ def load_description_from_file(req_id):
                 }
 
     return None
+
 
 
 # --- Read Requirements File ---
