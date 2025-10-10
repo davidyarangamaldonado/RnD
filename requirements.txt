@@ -1,7 +1,11 @@
 streamlit
-python-docx
 pandas
+python-docx
 openpyxl
 xlrd
-sentence-transformers
+Pillow
 mammoth
+sentence-transformers
+openai
+scikit-learn
+numpy
