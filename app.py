@@ -52,27 +52,45 @@ def pil_image_to_base64_html(pil_img):
     b64_str = base64.b64encode(buffer.getvalue()).decode()
     return f'<img src="data:image/png;base64,{b64_str}" />'
 
-# --- Determine paragraph list type and level ---
-def get_paragraph_list_info(paragraph):
+# --- Convert integer to roman numeral ---
+def int_to_roman(num):
+    val = [
+        1000, 900, 500, 400,
+        100, 90, 50, 40,
+        10, 9, 5, 4, 1
+    ]
+    syms = [
+        "M", "CM", "D", "CD",
+        "C", "XC", "L", "XL",
+        "X", "IX", "V", "IV",
+        "I"
+    ]
+    roman_num = ''
+    i = 0
+    while num > 0:
+        for _ in range(num // val[i]):
+            roman_num += syms[i]
+            num -= val[i]
+        i += 1
+    return roman_num.lower()
+
+# --- Determine list info ---
+def get_list_info(paragraph):
     numPr = paragraph._p.xpath('./w:pPr/w:numPr')
     if numPr:
         ilvl = int(numPr[0].xpath('./w:ilvl')[0].get(qn('w:val')))
         numId = int(numPr[0].xpath('./w:numId')[0].get(qn('w:val')))
-        # Return tuple: (level, is_ordered)
-        # We treat even-numbered numId as ordered, odd as bullets (simplified)
-        is_ordered = True  # default
-        # For Word, we can inspect numbering definitions if needed
-        return ilvl, is_ordered
-    # Check for bullet style
+        return ilvl, numId
     if paragraph.style.name.lower().startswith("bullet"):
-        return 0, False
+        return 0, -1  # bullet
     return None, None
 
-# --- Render Word Document with exact lists, nested levels, tables, headings, and images ---
+# --- Render Word document exactly ---
 def render_word_doc(filename):
     doc = Document(filename)
     html_content = ""
-    open_lists = []
+    open_lists = []  # stack: (tag, level)
+    numbering_counters = {}  # numId -> {level: counter}
 
     def close_lists_to_level(level):
         nonlocal html_content
@@ -91,10 +109,32 @@ def render_word_doc(filename):
             html_content += f"<h3>{text}</h3>"
             continue
 
-        # Lists
-        level, is_ordered = get_paragraph_list_info(paragraph)
+        level, numId = get_list_info(paragraph)
+
         if level is not None:
-            tag = "ol" if is_ordered else "ul"
+            if numId not in numbering_counters:
+                numbering_counters[numId] = {}
+            if level not in numbering_counters[numId]:
+                numbering_counters[numId][level] = 0
+            numbering_counters[numId][level] += 1
+            # reset deeper levels
+            for l in range(level+1, 10):
+                if l in numbering_counters[numId]:
+                    numbering_counters[numId][l] = 0
+
+            # Determine list tag
+            tag = "ul" if numId == -1 else "ol"
+            # Determine prefix for numbered lists
+            prefix = ""
+            if tag == "ol":
+                if level == 0:
+                    prefix = f"{numbering_counters[numId][level]}) "
+                elif level == 1:
+                    prefix = f"{chr(96 + numbering_counters[numId][level])}) "  # a), b), c)
+                elif level == 2:
+                    prefix = f"{int_to_roman(numbering_counters[numId][level])}) "
+                else:
+                    prefix = f"{numbering_counters[numId][level]}) "
 
             # Close higher or same level lists
             close_lists_to_level(level)
@@ -104,17 +144,14 @@ def render_word_doc(filename):
                 html_content += f"<{tag}>"
                 open_lists.append((tag, level))
 
-            html_content += f"<li>{text}</li>"
+            html_content += f"<li>{prefix}{text}</li>"
 
         else:
-            # Close all open lists
             close_lists_to_level(0)
             html_content += f"<p>{text}</p>"
 
-    # Close remaining open lists
-    while open_lists:
-        tag, lvl = open_lists.pop()
-        html_content += f"</{tag}>"
+    # Close remaining lists
+    close_lists_to_level(0)
 
     # Tables
     for table in doc.tables:
@@ -139,9 +176,8 @@ def render_word_doc(filename):
 
     return html_content
 
-# --- Load and Process Data ---
+# --- Load Requirements ---
 df = read_requirements_file()
-
 if df is not None:
     df.columns = [str(col).strip() for col in df.columns]
     try:
