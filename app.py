@@ -72,6 +72,11 @@ def load_description_from_file(req_id):
             try:
                 if ext == ".docx":
                     html_content = ""
+                    
+                    # --- 1) Use Mammoth for main text with bullets & numbering ---
+                    with open(filename, "rb") as docx_file:
+                        result = mammoth.convert_to_html(docx_file)
+                        html_content = result.value
 
                     doc = Document(filename)
 
