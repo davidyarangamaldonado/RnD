@@ -20,8 +20,8 @@ st.markdown("""
         td { padding: 6px; }
         ol { list-style-type: none; margin-left: 1.5em; padding-left: 1.5em; }  /* numbered lists use custom prefix */
         ul { list-style-type: disc; margin-left: 1.5em; padding-left: 1.5em; } /* bullets */
-        ul ul { list-style-type: circle; }
-        ul ul ul { list-style-type: square; }
+        ul ul { list-style-type: circle; }       /* level 1 nested bullets */
+        ul ul ul { list-style-type: square; }    /* level 2 nested bullets */
         img { max-width: 100%; height: auto; margin-top: 10px; }
         pre { white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
     </style>
