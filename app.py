@@ -4,7 +4,6 @@ import os
 from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 import base64
-import mammoth
 
 # --- Streamlit Page Setup ---
 st.set_page_config(page_title="Design Verification Testing (DVT) Test Planner", layout="wide")
@@ -63,69 +62,67 @@ st.title("Design Verification Testing (DVT) Test Planner")
 # --- Configurable Requirements File ---
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
 
-
 # --- Load Description (Word/Text with formatting, bullets, numbering, tables, and images) ---
 def load_description_from_file(req_id):
-    for ext in [".docx", ".txt"]:
-        filename = f"{req_id}{ext}"
-        if os.path.isfile(filename):
-            try:
-                if ext == ".docx":
-                    html_content = ""
-                    
-                    # --- 1) Use Mammoth for main text with bullets & numbering ---
-                    with open(filename, "rb") as docx_file:
-                        result = mammoth.convert_to_html(docx_file)
-                        html_content = result.value
+    filename = f"{req_id}.docx"
+    if not os.path.isfile(filename):
+        txt_file = f"{req_id}.txt"
+        if os.path.isfile(txt_file):
+            with open(txt_file, "r", encoding="utf-8") as file:
+                return {"html": f"<pre>{file.read()}</pre>"}
+        return None
 
-                    doc = Document(filename)
+    doc = Document(filename)
+    html_content = ""
 
-                    # --- Walk through document elements ---
-                    for block in doc.element.body:
-                        if block.tag.endswith("p"):  # Paragraph
-                            para = doc.paragraphs[doc.element.body.index(block)]
-                            text = para.text.strip()
-                            if text:
-                                html_content += f"<p>{text}</p>"
+    # --- Helper to convert run formatting to HTML ---
+    def run_to_html(run):
+        text = run.text
+        if not text:
+            return ""
+        if run.bold:
+            text = f"<b>{text}</b>"
+        if run.italic:
+            text = f"<i>{text}</i>"
+        if run.underline:
+            text = f"<u>{text}</u>"
+        return text
 
-                        elif block.tag.endswith("tbl"):  # Table
-                            table = doc.tables[doc.element.body.index(block)]
-                            html_content += "<table>"
-                            for row in table.rows:
-                                html_content += "<tr>"
-                                for cell in row.cells:
-                                    cell_text = cell.text.strip().replace("\n", "<br>")
-                                    html_content += f"<td>{cell_text}</td>"
-                                html_content += "</tr>"
-                            html_content += "</table><br>"
+    # --- Walk through document in order ---
+    for block in doc.element.body:
+        if block.tag.endswith("p"):  # Paragraph
+            para_idx = doc.element.body.index(block)
+            para = doc.paragraphs[para_idx]
 
-                    # --- Extract images ---
-                    for rel in doc.part.rels.values():
-                        if rel.reltype == RT.IMAGE:
-                            image_data = rel.target_part.blob
-                            try:
-                                img_base64 = base64.b64encode(image_data).decode("utf-8")
-                                img_tag = f'<img src="data:image/png;base64,{img_base64}" style="max-width:100%; height:auto; margin-top:10px;">'
-                                html_content += img_tag
-                            except Exception:
-                                continue
+            # --- Check for numbering / bullet ---
+            if para.style.name.startswith("List"):
+                list_tag = "ul" if "Bullet" in para.style.name else "ol"
+                html_content += f"<{list_tag}><li>{''.join(run_to_html(r) for r in para.runs)}</li></{list_tag}>"
+            else:
+                html_content += f"<p>{''.join(run_to_html(r) for r in para.runs)}</p>"
 
-                    return {"html": html_content}
+            # --- Check for inline pictures ---
+            for run in para.runs:
+                for inline_shape in run.element.findall(".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"):
+                    embed = inline_shape.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed")
+                    if embed in doc.part.rels:
+                        img_data = doc.part.rels[embed].target_part.blob
+                        img_base64 = base64.b64encode(img_data).decode("utf-8")
+                        html_content += f'<img src="data:image/png;base64,{img_base64}" style="max-width:100%; height:auto; margin-top:10px;">'
 
-                else:  # .txt fallback
-                    with open(filename, "r", encoding="utf-8") as file:
-                        return {
-                            "html": f"<pre>{file.read()}</pre>"
-                        }
+        elif block.tag.endswith("tbl"):  # Table
+            table_idx = doc.element.body.index(block)
+            table = doc.tables[table_idx]
+            html_content += "<table>"
+            for row in table.rows:
+                html_content += "<tr>"
+                for cell in row.cells:
+                    cell_text = cell.text.strip().replace("\n", "<br>")
+                    html_content += f"<td>{cell_text}</td>"
+                html_content += "</tr>"
+            html_content += "</table><br>"
 
-            except Exception as e:
-                return {
-                    "html": f"<p style='color:red;'>Error reading {ext} file: {e}</p>"
-                }
-
-    return None
-
-
+    return {"html": html_content}
 
 # --- Read Requirements File ---
 def read_requirements_file():
@@ -142,7 +139,6 @@ def read_requirements_file():
     except Exception as e:
         st.error(f"Failed to read requirements file: {e}")
         return None
-
 
 # --- Load and Process Data ---
 df = read_requirements_file()
