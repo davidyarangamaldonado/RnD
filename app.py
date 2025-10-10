@@ -65,9 +65,14 @@ st.title("Design Verification Testing (DVT) Test Planner")
 # --- Configurable Requirements File ---
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
 
+def image_to_base64(img: Image.Image) -> str:
+    """Convert a PIL image to a base64 string for HTML embedding."""
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode()
+
 # --- Load Description (Word/Text with formatting, bullets, numbering, tables, and images) ---
 def load_description_from_file(req_id):
-    """Loads .docx or .txt file with bullets/numbering (via Mammoth) + tables/images (via python-docx)."""
     for ext in [".docx", ".txt"]:
         filename = f"{req_id}{ext}"
         if os.path.isfile(filename):
@@ -79,10 +84,12 @@ def load_description_from_file(req_id):
                     # --- 1) Use Mammoth for main text with bullets & numbering ---
                     with open(filename, "rb") as docx_file:
                         result = mammoth.convert_to_html(docx_file)
-                        html_content = result.value  # Bullets & numbering preserved
+                        html_content = result.value
 
-                    # --- 2) Use python-docx for tables ---
+                    # --- 2) Use python-docx for tables & images ---
                     doc = Document(filename)
+
+                    # Extract tables
                     for table in doc.tables:
                         html_content += "<table>"
                         for row in table.rows:
@@ -93,22 +100,18 @@ def load_description_from_file(req_id):
                             html_content += "</tr>"
                         html_content += "</table><br>"
 
-                    # --- 3) Extract images and embed inline ---
-                    rels = doc.part.rels
-                    for rel in rels.values():
+                    # Extract images
+                    for rel in doc.part.rels.values():
                         if rel.reltype == RT.IMAGE:
                             image_data = rel.target_part.blob
-                            image_stream = BytesIO(image_data)
                             try:
-                                img = Image.open(image_stream)
+                                img = Image.open(BytesIO(image_data))
                                 images.append(img)
 
-                                # Encode as base64 for inline HTML
-                                buffered = BytesIO()
-                                img.save(buffered, format="PNG")
-                                img_str = base64.b64encode(buffered.getvalue()).decode()
+                                # Embed inline image (base64)
+                                img_b64 = image_to_base64(img)
                                 html_content += (
-                                    f'<div><img src="data:image/png;base64,{img_str}" '
+                                    f'<div><img src="data:image/png;base64,{img_b64}" '
                                     f'style="max-width:100%;height:auto;"/></div><br>'
                                 )
                             except Exception:
