@@ -13,14 +13,14 @@ st.set_page_config(page_title="DVT Test Planner", layout="wide")
 st.markdown("""
     <style>
         .main .block-container { max-width: 60%; padding-left: 6rem; padding-right: 6rem; }
-        .reportview-container .main { font-family: "Times New Roman", Times, serif; font-size: 20px; line-height: 1.6; }
+        .reportview-container .main { font-family: "Times New Roman", Times, serif; font-size: 20px; line-height: 1.5; }
         h1, h2, h3 { color: #003366; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table, th, td { border: 1px solid black; }
         td { padding: 6px; }
         ol, ul { list-style-type: none; margin: 0; padding: 0; }
-        li { margin-bottom: 5px; }
-        img { max-width: 100%; height: auto; margin-top: 10px; }
+        li { margin-bottom: 4px; line-height: 1.5; }
+        img { max-width: 60%; height: auto; margin: 5px 0; }
         pre { white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
     </style>
 """, unsafe_allow_html=True)
@@ -88,13 +88,13 @@ def get_list_info(paragraph):
     return None, None, None
 
 # --- Convert PIL image to base64 HTML ---
-def pil_image_to_base64_html(pil_img):
+def pil_image_to_base64_html(pil_img, width_percent=60):
     buffer = BytesIO()
     pil_img.save(buffer, format="PNG")
     b64_str = base64.b64encode(buffer.getvalue()).decode()
-    return f'<img src="data:image/png;base64,{b64_str}" />'
+    return f'<img src="data:image/png;base64,{b64_str}" style="max-width:{width_percent}%; height:auto; margin:5px 0;" />'
 
-# --- Render Word document exactly (dynamic bullets, exact indentation) ---
+# --- Render Word document exactly (dynamic bullets, Word-style indentation, small images) ---
 def render_word_doc(filename):
     doc = Document(filename)
     html_content = ""
@@ -107,7 +107,6 @@ def render_word_doc(filename):
             tag, lvl = open_lists.pop()
             html_content += f"</{tag}>"
 
-    # Dynamic bullet characters for any depth
     base_bullets = ["•", "◦", "▪"]
 
     for paragraph in doc.paragraphs:
@@ -154,8 +153,8 @@ def render_word_doc(filename):
                 html_content += f"<{tag}>"
                 open_lists.append((tag, level))
 
-            # --- Exact indentation per level ---
-            indent_px = 20 * (level + 1)  # adjust 20px per level if needed
+            # Word-style indentation
+            indent_px = 36 * level
             html_content += f'<li style="padding-left:{indent_px}px">{prefix}{text}</li>'
 
         else:
@@ -183,7 +182,7 @@ def render_word_doc(filename):
         if "image" in rel.reltype:
             try:
                 img = Image.open(BytesIO(rel.target_part.blob))
-                html_content += pil_image_to_base64_html(img)
+                html_content += pil_image_to_base64_html(img, width_percent=60)
             except:
                 continue
 
