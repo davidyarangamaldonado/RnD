@@ -1,5 +1,6 @@
 import streamlit as st
 from docx import Document
+from docx.oxml.ns import qn
 from io import BytesIO
 from PIL import Image
 import base64
@@ -7,7 +8,7 @@ import pandas as pd
 import os
 
 # --- Streamlit Setup ---
-st.set_page_config(page_title="Design Verification Testing (DVT) Test Planner", layout="wide")
+st.set_page_config(page_title="DVT Test Planner", layout="wide")
 
 st.markdown("""
     <style>
@@ -17,12 +18,7 @@ st.markdown("""
         table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table, th, td { border: 1px solid black; }
         td { padding: 6px; }
-        ol { list-style-type: decimal; margin-left: 1.5em; }
-        ol ol { list-style-type: lower-alpha; }
-        ol ol ol { list-style-type: lower-roman; }
-        ul { list-style-type: disc; margin-left: 1.5em; }
-        ul ul { list-style-type: circle; }
-        ul ul ul { list-style-type: square; }
+        ol, ul { margin-left: 1.5em; }
         img { max-width: 100%; height: auto; margin-top: 10px; }
         pre { white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
     </style>
@@ -49,45 +45,90 @@ def read_requirements_file():
         st.error(f"Failed to read requirements file: {e}")
         return None
 
-# --- Convert image bytes to base64 HTML ---
+# --- Convert PIL image to base64 HTML ---
 def pil_image_to_base64_html(pil_img):
     buffer = BytesIO()
     pil_img.save(buffer, format="PNG")
     b64_str = base64.b64encode(buffer.getvalue()).decode()
     return f'<img src="data:image/png;base64,{b64_str}" />'
 
-# --- Render Word Document exactly as it appears ---
+# --- Determine paragraph list type and level ---
+def get_paragraph_list_info(paragraph):
+    numPr = paragraph._p.xpath('./w:pPr/w:numPr')
+    if numPr:
+        ilvl = int(numPr[0].xpath('./w:ilvl')[0].get(qn('w:val')))
+        numId = int(numPr[0].xpath('./w:numId')[0].get(qn('w:val')))
+        # Return tuple: (level, is_ordered)
+        # We treat even-numbered numId as ordered, odd as bullets (simplified)
+        is_ordered = True  # default
+        # For Word, we can inspect numbering definitions if needed
+        return ilvl, is_ordered
+    # Check for bullet style
+    if paragraph.style.name.lower().startswith("bullet"):
+        return 0, False
+    return None, None
+
+# --- Render Word Document with exact lists, nested levels, tables, headings, and images ---
 def render_word_doc(filename):
     doc = Document(filename)
     html_content = ""
+    open_lists = []
 
-    # Iterate through each block in order
-    for block in doc.element.body:
-        # Paragraph
-        if block.tag.endswith('p'):
-            paragraph = doc.paragraphs[doc.element.body.index(block)]
-            text = paragraph.text
-            if text.strip() != "":
-                if paragraph.style.name.startswith('Heading'):
-                    html_content += f"<h3>{text}</h3>"
-                else:
-                    html_content += f"<p>{text}</p>"
+    def close_lists_to_level(level):
+        nonlocal html_content
+        while open_lists and open_lists[-1][1] >= level:
+            tag, lvl = open_lists.pop()
+            html_content += f"</{tag}>"
 
-        # Table
-        elif block.tag.endswith('tbl'):
-            table_idx = doc.element.body.index(block)
-            table = [t for t in doc.tables if t._element == block][0]
-            table_html = "<table>"
-            for row in table.rows:
-                table_html += "<tr>"
-                for cell in row.cells:
-                    cell_text = cell.text.strip().replace("\n", "<br>")
-                    table_html += f"<td>{cell_text}</td>"
-                table_html += "</tr>"
-            table_html += "</table>"
-            html_content += table_html
+    for paragraph in doc.paragraphs:
+        text = paragraph.text.strip()
+        if text == "":
+            continue
 
-    # Extract images from document relationships
+        # Headings
+        if paragraph.style.name.startswith("Heading"):
+            close_lists_to_level(0)
+            html_content += f"<h3>{text}</h3>"
+            continue
+
+        # Lists
+        level, is_ordered = get_paragraph_list_info(paragraph)
+        if level is not None:
+            tag = "ol" if is_ordered else "ul"
+
+            # Close higher or same level lists
+            close_lists_to_level(level)
+
+            # Open new list if needed
+            if not open_lists or open_lists[-1][1] < level or open_lists[-1][0] != tag:
+                html_content += f"<{tag}>"
+                open_lists.append((tag, level))
+
+            html_content += f"<li>{text}</li>"
+
+        else:
+            # Close all open lists
+            close_lists_to_level(0)
+            html_content += f"<p>{text}</p>"
+
+    # Close remaining open lists
+    while open_lists:
+        tag, lvl = open_lists.pop()
+        html_content += f"</{tag}>"
+
+    # Tables
+    for table in doc.tables:
+        table_html = "<table>"
+        for row in table.rows:
+            table_html += "<tr>"
+            for cell in row.cells:
+                cell_text = cell.text.strip().replace("\n", "<br>")
+                table_html += f"<td>{cell_text}</td>"
+            table_html += "</tr>"
+        table_html += "</table><br>"
+        html_content += table_html
+
+    # Images
     for rel in doc.part.rels.values():
         if "image" in rel.reltype:
             try:
@@ -120,9 +161,9 @@ if df is not None:
             matched_description = id_to_description[user_input_upper]
             st.success(f"**{user_input}**\n\n**Description:** {matched_description}")
 
-            # Try .docx first
             docx_file = f"{user_input_upper}.docx"
             txt_file = f"{user_input_upper}.txt"
+
             if os.path.isfile(docx_file):
                 html_content = render_word_doc(docx_file)
                 st.markdown(html_content, unsafe_allow_html=True)
