@@ -3,8 +3,7 @@ import pandas as pd
 import os
 from docx import Document
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
-from io import BytesIO
-from PIL import Image
+import base64
 import mammoth
 
 # --- Streamlit Page Setup ---
@@ -73,7 +72,6 @@ def load_description_from_file(req_id):
             try:
                 if ext == ".docx":
                     html_content = ""
-                    images = []
 
                     # --- 1) Use Mammoth for main text with bullets & numbering ---
                     with open(filename, "rb") as docx_file:
@@ -94,29 +92,28 @@ def load_description_from_file(req_id):
                             html_content += "</tr>"
                         html_content += "</table><br>"
 
-                    # Extract images (store as PIL objects)
+                    # Extract images and embed directly in HTML
                     for rel in doc.part.rels.values():
                         if rel.reltype == RT.IMAGE:
                             image_data = rel.target_part.blob
                             try:
-                                img = Image.open(BytesIO(image_data))
-                                images.append(img)
+                                img_base64 = base64.b64encode(image_data).decode("utf-8")
+                                img_tag = f'<img src="data:image/png;base64,{img_base64}" style="max-width:100%; height:auto; margin-top:10px;">'
+                                html_content += img_tag
                             except Exception:
                                 continue
 
-                    return {"html": html_content, "images": images}
+                    return {"html": html_content}
 
                 else:  # .txt fallback
                     with open(filename, "r", encoding="utf-8") as file:
                         return {
-                            "html": f"<pre>{file.read()}</pre>",
-                            "images": []
+                            "html": f"<pre>{file.read()}</pre>"
                         }
 
             except Exception as e:
                 return {
-                    "html": f"<p style='color:red;'>Error reading {ext} file: {e}</p>",
-                    "images": []
+                    "html": f"<p style='color:red;'>Error reading {ext} file: {e}</p>"
                 }
 
     return None
@@ -167,13 +164,8 @@ if df is not None:
 
             if test_description:
                 st.subheader("DVT Test Description")
-                # ✅ Render formatted HTML (lists, tables)
+                # ✅ Render formatted HTML with inline images
                 st.markdown(test_description["html"], unsafe_allow_html=True)
-
-                # ✅ Show extracted images separately (instead of inline <img>)
-                if test_description["images"]:
-                    for idx, img in enumerate(test_description["images"]):
-                        st.image(img, caption=f"Figure {idx + 1}", use_container_width=True)
             else:
                 st.warning(
                     f"No `.docx` or `.txt` file found for `{user_input}` "
