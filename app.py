@@ -18,7 +18,7 @@ st.markdown("""
         table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table, th, td { border: 1px solid black; }
         td { padding: 6px; }
-        ol, ul { margin-left: 1.5em; list-style-type: none; padding-left: 1.5em; } /* Remove default numbering/bullets */
+        ol, ul { margin-left: 1.5em; list-style-type: none; padding-left: 1.5em; }
         img { max-width: 100%; height: auto; margin-top: 10px; }
         pre { white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
     </style>
@@ -76,6 +76,20 @@ def get_list_info(paragraph):
         return 0, -1  # bullet
     return None, None
 
+# --- Convert paragraph runs to HTML (bold, italic, underline) ---
+def paragraph_to_html(paragraph):
+    html = ""
+    for run in paragraph.runs:
+        text = run.text.replace("\n", "<br>")
+        if run.bold:
+            text = f"<b>{text}</b>"
+        if run.italic:
+            text = f"<i>{text}</i>"
+        if run.underline:
+            text = f"<u>{text}</u>"
+        html += text
+    return html
+
 # --- Render Word document exactly ---
 def render_word_doc(filename):
     doc = Document(filename)
@@ -90,7 +104,7 @@ def render_word_doc(filename):
             html_content += f"</{tag}>"
 
     for paragraph in doc.paragraphs:
-        text = paragraph.text.strip()
+        text = paragraph_to_html(paragraph).strip()
         if text == "":
             continue
 
@@ -115,13 +129,14 @@ def render_word_doc(filename):
 
             # Determine list tag
             tag = "ul" if numId == -1 else "ol"
-            # Determine prefix for numbered lists
+
+            # Determine prefix for numbered lists only
             prefix = ""
             if tag == "ol":
                 if level == 0:
                     prefix = f"{numbering_counters[numId][level]}) "
                 elif level == 1:
-                    prefix = f"{chr(96 + numbering_counters[numId][level])}) "  # a), b), c)
+                    prefix = f"{chr(96 + numbering_counters[numId][level])}) "
                 elif level == 2:
                     prefix = f"{int_to_roman(numbering_counters[numId][level])}) "
                 else:
@@ -150,7 +165,7 @@ def render_word_doc(filename):
         for row in table.rows:
             table_html += "<tr>"
             for cell in row.cells:
-                cell_text = cell.text.strip().replace("\n", "<br>")
+                cell_text = paragraph_to_html(cell.paragraphs[0]).strip() if cell.paragraphs else ""
                 table_html += f"<td>{cell_text}</td>"
             table_html += "</tr>"
         table_html += "</table><br>"
