@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 from docx import Document
-from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from io import BytesIO
 from PIL import Image
 import mammoth
@@ -46,12 +45,10 @@ st.markdown("""
             font-family: "Courier New", Courier, monospace;
         }
 
-        /* --- Fix ordered list sub-numbering --- */
         ol { list-style-type: decimal; margin-left: 1.5em; }
         ol ol { list-style-type: lower-alpha; }
         ol ol ol { list-style-type: lower-roman; }
 
-        /* --- Unordered list consistency --- */
         ul { list-style-type: disc; margin-left: 1.5em; }
         ul ul { list-style-type: circle; }
         ul ul ul { list-style-type: square; }
@@ -65,7 +62,7 @@ st.title("Design Verification Testing (DVT) Test Planner")
 # --- Configurable Requirements File ---
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
 
-# --- Load Description (Word/Text with formatting, bullets, numbering, tables, and images) ---
+# --- Load Description ---
 def load_description_from_file(req_id):
     for ext in [".docx", ".txt"]:
         filename = f"{req_id}{ext}"
@@ -74,19 +71,18 @@ def load_description_from_file(req_id):
                 if ext == ".docx":
                     images_dict = {}
 
-                    # --- Mammoth image handler ---
-                    def mammoth_image_handler(m_image):
-                        image_bytes = m_image.read()  # correct for Mammoth
-                        pil_img = Image.open(BytesIO(image_bytes))  # PIL Image
+                    # Mammoth image handler using get_bytes()
+                    def mammoth_image_handler(m_img):
+                        image_bytes = m_img.get_bytes()
+                        pil_img = Image.open(BytesIO(image_bytes))
                         images_dict[len(images_dict)+1] = pil_img
-                        # Return placeholder HTML
                         return {"src": f"__IMAGE_{len(images_dict)}__"}
 
                     with open(filename, "rb") as docx_file:
                         result = mammoth.convert_to_html(docx_file, convert_image=mammoth_image_handler)
                         html_content = result.value
 
-                    # --- Replace placeholders with base64 inline images ---
+                    # Replace placeholders with inline base64 images
                     final_html = html_content
                     images_list = list(images_dict.values())
                     for idx, pil_img in enumerate(images_list):
@@ -95,7 +91,7 @@ def load_description_from_file(req_id):
                         b64_str = base64.b64encode(buffer.getvalue()).decode()
                         final_html = final_html.replace(f"__IMAGE_{idx+1}__", f'<img src="data:image/png;base64,{b64_str}" />')
 
-                    # --- Append tables using python-docx (optional if Mammoth misses them) ---
+                    # Append tables using python-docx
                     doc = Document(filename)
                     for table in doc.tables:
                         table_html = "<table>"
@@ -122,7 +118,6 @@ def load_description_from_file(req_id):
                     "html": f"<p style='color:red;'>Error reading {ext} file: {e}</p>",
                     "images": []
                 }
-
     return None
 
 # --- Read Requirements File ---
@@ -169,7 +164,6 @@ if df is not None:
 
             if test_description:
                 st.subheader("DVT Test Description")
-                # ✅ Render formatted HTML (lists, tables, and images inline)
                 st.markdown(test_description["html"], unsafe_allow_html=True)
 
             else:
