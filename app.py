@@ -108,11 +108,11 @@ def load_description_from_file(req_id):
                                 img = Image.open(BytesIO(image_data))
                                 images.append(img)
 
-                                # Embed inline image (base64)
+                                # Embed inline image (base64 + HTML <img>)
                                 img_b64 = image_to_base64(img)
                                 html_content += (
-                                    f'<div><img src="data:image/png;base64,{img_b64}" '
-                                    f'style="max-width:100%;height:auto;"/></div><br>'
+                                    f'<p><img src="data:image/png;base64,{img_b64}" '
+                                    f'style="max-width:100%;height:auto;"/></p>'
                                 )
                             except Exception:
                                 continue
@@ -178,6 +178,7 @@ if df is not None:
 
             if test_description:
                 st.subheader("DVT Test Description")
+                # ✅ Allow inline HTML rendering (including <img>)
                 st.markdown(test_description["html"], unsafe_allow_html=True)
 
                 if test_description["images"]:
