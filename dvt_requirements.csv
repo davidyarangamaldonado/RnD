@@ -1,6 +1,0 @@
-Requirement_ID ,Category,Description
-NODEPOWER-22,Power,MUST support battery backup failover/failback operation with Alpha XM2/XM3 supplies in N+0 test setup
-FREQ-2,,Downstream
-FREQ-3,,
-FREQ-4,,
-FREQ-5,,
