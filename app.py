@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 from docx import Document
-from docx.opc.constants import RELATIONSHIP_TYPE as RT
 import base64
 
 # --- Streamlit Page Setup ---
@@ -62,7 +61,7 @@ st.title("Design Verification Testing (DVT) Test Planner")
 # --- Configurable Requirements File ---
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
 
-# --- Load Description (Word/Text with formatting, bullets, numbering, tables, and images) ---
+# --- Load Description from Word / Text ---
 def load_description_from_file(req_id):
     filename = f"{req_id}.docx"
     if not os.path.isfile(filename):
@@ -75,7 +74,6 @@ def load_description_from_file(req_id):
     doc = Document(filename)
     html_content = ""
 
-    # --- Helper to convert run formatting to HTML ---
     def run_to_html(run):
         text = run.text
         if not text:
@@ -88,29 +86,51 @@ def load_description_from_file(req_id):
             text = f"<u>{text}</u>"
         return text
 
-    # --- Walk through document in order ---
+    # --- Track nested list stack ---
+    list_stack = []
+
+    def close_lists_to_level(level):
+        nonlocal html_content
+        while len(list_stack) > level:
+            tag = list_stack.pop()
+            html_content += f"</{tag}>"
+
+    for para in doc.paragraphs:
+        style_name = para.style.name
+        is_list = style_name.startswith("List")
+        level = 0
+        try:
+            numPr = para._p.get_or_add_pPr().numPr
+            if numPr is not None and numPr.ilvl is not None:
+                level = int(numPr.ilvl.val)
+        except Exception:
+            level = 0
+
+        if is_list:
+            list_type = "ul" if "Bullet" in style_name else "ol"
+            close_lists_to_level(level)
+            while len(list_stack) <= level:
+                html_content += f"<{list_type}>"
+                list_stack.append(list_type)
+            html_content += f"<li>{''.join(run_to_html(r) for r in para.runs)}</li>"
+        else:
+            close_lists_to_level(0)
+            html_content += f"<p>{''.join(run_to_html(r) for r in para.runs)}</p>"
+
+        # --- Inline images ---
+        for run in para.runs:
+            for inline_shape in run.element.findall(".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"):
+                embed = inline_shape.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed")
+                if embed in doc.part.rels:
+                    img_data = doc.part.rels[embed].target_part.blob
+                    img_base64 = base64.b64encode(img_data).decode("utf-8")
+                    html_content += f'<img src="data:image/png;base64,{img_base64}" style="max-width:100%; height:auto; margin-top:10px;">'
+
+    close_lists_to_level(0)
+
+    # --- Tables ---
     for block in doc.element.body:
-        if block.tag.endswith("p"):  # Paragraph
-            para_idx = doc.element.body.index(block)
-            para = doc.paragraphs[para_idx]
-
-            # --- Check for numbering / bullet ---
-            if para.style.name.startswith("List"):
-                list_tag = "ul" if "Bullet" in para.style.name else "ol"
-                html_content += f"<{list_tag}><li>{''.join(run_to_html(r) for r in para.runs)}</li></{list_tag}>"
-            else:
-                html_content += f"<p>{''.join(run_to_html(r) for r in para.runs)}</p>"
-
-            # --- Check for inline pictures ---
-            for run in para.runs:
-                for inline_shape in run.element.findall(".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"):
-                    embed = inline_shape.attrib.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed")
-                    if embed in doc.part.rels:
-                        img_data = doc.part.rels[embed].target_part.blob
-                        img_base64 = base64.b64encode(img_data).decode("utf-8")
-                        html_content += f'<img src="data:image/png;base64,{img_base64}" style="max-width:100%; height:auto; margin-top:10px;">'
-
-        elif block.tag.endswith("tbl"):  # Table
+        if block.tag.endswith("tbl"):
             table_idx = doc.element.body.index(block)
             table = doc.tables[table_idx]
             html_content += "<table>"
@@ -168,7 +188,6 @@ if df is not None:
 
             if test_description:
                 st.subheader("DVT Test Description")
-                # ✅ Render formatted HTML with inline images
                 st.markdown(test_description["html"], unsafe_allow_html=True)
             else:
                 st.warning(
