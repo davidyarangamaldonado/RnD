@@ -6,7 +6,6 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from io import BytesIO
 from PIL import Image
 import mammoth
-import base64
 
 # --- Streamlit Page Setup ---
 st.set_page_config(page_title="Design Verification Testing (DVT) Test Planner", layout="wide")
@@ -65,11 +64,6 @@ st.title("Design Verification Testing (DVT) Test Planner")
 # --- Configurable Requirements File ---
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # Update path if needed
 
-def image_to_base64(img: Image.Image) -> str:
-    """Convert a PIL image to a base64 string for HTML embedding."""
-    buffered = BytesIO()
-    img.save(buffered, format="PNG")
-    return base64.b64encode(buffered.getvalue()).decode()
 
 # --- Load Description (Word/Text with formatting, bullets, numbering, tables, and images) ---
 def load_description_from_file(req_id):
@@ -100,20 +94,13 @@ def load_description_from_file(req_id):
                             html_content += "</tr>"
                         html_content += "</table><br>"
 
-                    # Extract images
+                    # Extract images (store as PIL objects)
                     for rel in doc.part.rels.values():
                         if rel.reltype == RT.IMAGE:
                             image_data = rel.target_part.blob
                             try:
                                 img = Image.open(BytesIO(image_data))
                                 images.append(img)
-
-                                # Embed inline image (base64 + HTML <img>)
-                                img_b64 = image_to_base64(img)
-                                html_content += (
-                                    f'<p><img src="data:image/png;base64,{img_b64}" '
-                                    f'style="max-width:100%;height:auto;"/></p>'
-                                )
                             except Exception:
                                 continue
 
@@ -134,6 +121,7 @@ def load_description_from_file(req_id):
 
     return None
 
+
 # --- Read Requirements File ---
 def read_requirements_file():
     try:
@@ -149,6 +137,7 @@ def read_requirements_file():
     except Exception as e:
         st.error(f"Failed to read requirements file: {e}")
         return None
+
 
 # --- Load and Process Data ---
 df = read_requirements_file()
@@ -178,11 +167,11 @@ if df is not None:
 
             if test_description:
                 st.subheader("DVT Test Description")
-                # ✅ Allow inline HTML rendering (including <img>)
+                # ✅ Render formatted HTML (lists, tables)
                 st.markdown(test_description["html"], unsafe_allow_html=True)
 
+                # ✅ Show extracted images separately (instead of inline <img>)
                 if test_description["images"]:
-                    st.write("📷 Extracted Images:")
                     for idx, img in enumerate(test_description["images"]):
                         st.image(img, caption=f"Figure {idx + 1}", use_container_width=True)
             else:
