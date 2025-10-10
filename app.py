@@ -18,7 +18,10 @@ st.markdown("""
         table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table, th, td { border: 1px solid black; }
         td { padding: 6px; }
-        ol, ul { margin-left: 1.5em; list-style-type: none; padding-left: 1.5em; }
+        ol { list-style-type: none; margin-left: 1.5em; padding-left: 1.5em; }  /* numbered lists use custom prefix */
+        ul { list-style-type: disc; margin-left: 1.5em; padding-left: 1.5em; } /* bullets */
+        ul ul { list-style-type: circle; }
+        ul ul ul { list-style-type: square; }
         img { max-width: 100%; height: auto; margin-top: 10px; }
         pre { white-space: pre-wrap; font-family: "Courier New", Courier, monospace; }
     </style>
@@ -141,6 +144,7 @@ def render_word_doc(filename):
                     prefix = f"{int_to_roman(numbering_counters[numId][level])}) "
                 else:
                     prefix = f"{numbering_counters[numId][level]}) "
+            # Bullets (ul) get no prefix
 
             # Close higher or same level lists
             close_lists_to_level(level)
@@ -165,7 +169,9 @@ def render_word_doc(filename):
         for row in table.rows:
             table_html += "<tr>"
             for cell in row.cells:
-                cell_text = paragraph_to_html(cell.paragraphs[0]).strip() if cell.paragraphs else ""
+                cell_text = ""
+                for para in cell.paragraphs:
+                    cell_text += paragraph_to_html(para).strip() + "<br>"
                 table_html += f"<td>{cell_text}</td>"
             table_html += "</tr>"
         table_html += "</table><br>"
