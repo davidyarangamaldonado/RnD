@@ -1,25 +1,14 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
-import json
 from io import BytesIO
-from PIL import Image
-import openai
 
 # ---------------- Streamlit Setup ----------------
-st.set_page_config(page_title="DVT Test Planner with AI", layout="wide")
-st.title("DVT Test Planner with AI Coverage Analysis")
-
-# ---------------- Security Info Banner ----------------
-st.info(
-    "Your OpenAI API key is used securely."
-)
-
-# ---------------- OpenAI API Key ----------------
-openai.api_key = st.secrets["openai"]["api_key"]
+st.set_page_config(page_title="DVT Test Planner - Rule Based", layout="wide")
+st.title("DVT Test Planner with Rule-Based Coverage Analysis")
 
 # ---------------- File Config ----------------
-REQUIREMENTS_FILE = "dvt_requirements.csv"  # contains your taxonomy in column 4
+REQUIREMENTS_FILE = "dvt_requirements.csv"  # taxonomy in column 4
 
 # ---------------- Read Requirements ----------------
 def read_requirements_file():
@@ -40,61 +29,46 @@ def read_requirements_file():
 # ---------------- Word Parsing ----------------
 def docx_to_text(file):
     doc = Document(file)
-    text = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
-    return text
+    return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
 def txt_to_text(file):
     return file.read().decode("utf-8")
 
-# ---------------- JSON Structuring ----------------
-def parse_plan_to_json(text):
-    plan_dict = {"sections": []}
-    lines = text.split("\n")
-    current_section = {"title": "", "content": []}
+# ---------------- Rule-Based Analysis ----------------
+def analyze_rule_based(plan_text, requirement_id, taxonomy_rule):
+    """
+    Simulate AI coverage using column 4 rules:
+    - Checks which keywords from taxonomy exist in the plan.
+    - Outputs complete plan and suggestions for missing items.
+    """
+    plan_lines = [line.strip() for line in plan_text.split("\n") if line.strip()]
+    taxonomy_keywords = [kw.strip() for kw in taxonomy_rule.split(",") if kw.strip()]
+    
+    covered = []
+    missing = []
 
-    for line in lines:
-        if line.strip() == "":
-            continue
-        if line.endswith(":"):  # treat as section header
-            if current_section["title"] or current_section["content"]:
-                plan_dict["sections"].append(current_section)
-            current_section = {"title": line.strip(), "content": []}
+    for kw in taxonomy_keywords:
+        if any(kw.lower() in line.lower() for line in plan_lines):
+            covered.append(kw)
         else:
-            current_section["content"].append(line.strip())
+            missing.append(kw)
 
-    if current_section["title"] or current_section["content"]:
-        plan_dict["sections"].append(current_section)
+    output = f"**Requirement ID:** {requirement_id}\n\n"
+    output += "### Complete Test Plan (from uploaded file)\n"
+    output += "\n".join(plan_lines) + "\n\n"
+    
+    output += "### Analysis:\n"
+    output += f"**Covered Tests:** {', '.join(covered) if covered else 'None'}\n"
+    output += f"**Missing Tests:** {', '.join(missing) if missing else 'None'}\n"
+    
+    if missing:
+        output += "\n### Suggestions:\n"
+        for m in missing:
+            output += f"- Add test steps to cover: {m}\n"
+    else:
+        output += "\nAll taxonomy rules are covered. No additional tests needed.\n"
 
-    return plan_dict
-
-# ---------------- AI Coverage Analysis with fallback ----------------
-def analyze_coverage_openai(plan_json, taxonomy_rules, model="gpt-3.5-turbo"):
-    prompt = f"""
-You are a senior test validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
-Compare the test plan against the taxonomy and identify strengths, gaps, and suggestions. Also, look online for any suggestions for the test plan. 
-
-Taxonomy of Required Tests:
-{taxonomy_rules}
-
-Proposed Test Plan (JSON):
-{json.dumps(plan_json, indent=2)}
-
-Respond with three sections:
-1. Test covered 
-2. Missing test cases
-3. Suggestions (improvements for full test coverage)
-"""
-    try:
-        response = openai.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return (
-            "OpenAI API need a better key."
-        )
+    return output
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -104,7 +78,7 @@ if df is not None:
     try:
         requirement_ids = df.iloc[:, 0].astype(str).tolist()
         descriptions = df.iloc[:, 2].astype(str).tolist()
-        taxonomy_col = df.iloc[:, 3].astype(str).tolist()  # taxonomy in column 4
+        taxonomy_col = df.iloc[:, 3].astype(str).tolist()
     except IndexError:
         st.error("Requirements file must have at least 4 columns (ID, ..., Description, Taxonomy).")
         st.stop()
@@ -113,43 +87,33 @@ if df is not None:
     id_to_taxonomy = {rid.upper(): tax for rid, tax in zip(requirement_ids, taxonomy_col)}
 
     # User enters requirement ID
-    user_input = st.text_input("Enter the Requirement ID (e.g. FREQ-1):").strip()
-    user_input_upper = user_input.upper()
-
+    user_input = st.text_input("Enter the Requirement ID (e.g. FREQ-1):").strip().upper()
     valid_id = False
-    if user_input_upper:
-        if user_input_upper in id_to_description:
+
+    if user_input:
+        if user_input in id_to_description:
             valid_id = True
-            st.success(f"**{user_input_upper}**\n\n**Description:** {id_to_description[user_input_upper]}")
+            st.success(f"**{user_input}**\n\n**Description:** {id_to_description[user_input]}")
         else:
             st.error("No match found for that Requirement ID.")
 
-    # File uploader is disabled until a valid requirement ID is entered
+    # File uploader
     uploaded_file = st.file_uploader(
         "Upload Proposed Test Plan (.docx or .txt)", 
         type=["docx", "txt"], 
         disabled=not valid_id
     )
 
-    # Proceed with coverage analysis only if both ID and file are provided
     if valid_id and uploaded_file:
-        matched_description = id_to_description[user_input_upper]
-        matched_taxonomy = id_to_taxonomy.get(user_input_upper, "No taxonomy found for this requirement.")
-
-        # Extract text from file
         if uploaded_file.name.endswith(".docx"):
             plan_text = docx_to_text(uploaded_file)
         else:
             plan_text = txt_to_text(uploaded_file)
 
-        # Parse to JSON
-        plan_json = parse_plan_to_json(plan_text)
-
-        # Run OpenAI Analysis
-        if st.button("Analyze Test plan"):
-            with st.spinner("Analyzing coverage with OpenAI..."):
-                analysis = analyze_coverage_openai(plan_json, matched_taxonomy)
-            st.subheader("AI Coverage Analysis")
-            st.markdown(analysis)
+        if st.button("Analyze Test Plan"):
+            with st.spinner("Analyzing test plan against taxonomy..."):
+                taxonomy_rule = id_to_taxonomy.get(user_input, "")
+                analysis_output = analyze_rule_based(plan_text, user_input, taxonomy_rule)
+            st.markdown(analysis_output)
 else:
     st.error("Could not load the requirements file.")
