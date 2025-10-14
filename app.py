@@ -6,20 +6,11 @@ from io import BytesIO
 from PIL import Image
 import base64
 import json
-from openai import OpenAI
+import subprocess  # <-- Added for Ollama CLI
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="DVT Test Planner with AI", layout="wide")
-
 st.title("Design Verification Testing (DVT) Test Planner with AI Coverage Analysis")
-
-# ---------------- OpenAI Setup ----------------
-# Make sure you set your API key in the environment:
-# export OPENAI_API_KEY="your-key"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    st.error("OpenAI API key not set. Please configure the environment variable OPENAI_API_KEY.")
-client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ---------------- File Config ----------------
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # contains your taxonomy in column 4
@@ -74,8 +65,11 @@ def parse_plan_to_json(text):
 
     return plan_dict
 
-# ---------------- AI Coverage Analysis ----------------
-def analyze_coverage(plan_json, taxonomy_rules):
+# ---------------- AI Coverage Analysis using Ollama ----------------
+def analyze_coverage(plan_json, taxonomy_rules, model="llama2"):
+    """
+    Calls Ollama CLI locally to perform test coverage analysis.
+    """
     prompt = f"""
 You are a senior validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
 Compare the test plan against the taxonomy and identify strengths, gaps, and suggestions.
@@ -91,12 +85,16 @@ Respond with three sections:
 2. Gaps (missing tests)
 3. Suggestions (improvements for full coverage)
 """
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",   # or "gpt-4o" for deeper reasoning
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2
-    )
-    return response.choices[0].message.content
+    try:
+        result = subprocess.run(
+            ["ollama", "generate", model, prompt],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        return f"Error calling Ollama: {e.stderr}"
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -150,9 +148,9 @@ if df is not None:
         st.subheader("Parsed Test Plan (JSON)")
         st.json(plan_json)
 
-        # Run AI Analysis using taxonomy from column 4
+        # Run Ollama Analysis
         if st.button("Analyze Test Coverage"):
-            with st.spinner("Analyzing coverage with AI..."):
+            with st.spinner("Analyzing coverage with Ollama..."):
                 analysis = analyze_coverage(plan_json, matched_taxonomy)
             st.subheader("AI Coverage Analysis")
             st.markdown(analysis)
