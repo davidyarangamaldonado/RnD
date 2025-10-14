@@ -93,10 +93,7 @@ Respond with three sections:
         return response.choices[0].message.content
     except Exception as e:
         return (
-            "⚠️ OpenAI API call failed or quota exceeded. Using mock POC response:\n\n"
-            "Test covered:\n- Example coverage identified.\n\n"
-            "Missing test cases:\n- Example missing tests.\n\n"
-            "Suggestions:\n- Example improvements for full coverage."
+            "OpenAI API need a better key."
         )
 
 # ---------------- Main UI ----------------
