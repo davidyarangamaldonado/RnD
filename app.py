@@ -68,10 +68,10 @@ def parse_plan_to_json(text):
 
     return plan_dict
 
-# ---------------- AI Coverage Analysis using OpenAI ----------------
+# ---------------- AI Coverage Analysis using OpenAI >=1.0.0 ----------------
 def analyze_coverage_openai(plan_json, taxonomy_rules, model="gpt-4"):
     """
-    Calls OpenAI API to perform test coverage analysis.
+    Uses OpenAI >=1.0.0 chat API to analyze test coverage.
     """
     prompt = f"""
 You are a senior validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
@@ -89,7 +89,7 @@ Respond with three sections:
 3. Suggestions (improvements for full coverage)
 """
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0
