@@ -5,8 +5,8 @@ from docx import Document
 from io import BytesIO
 from PIL import Image
 import base64
-import openai
 import json
+from openai import OpenAI
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="DVT Test Planner with AI", layout="wide")
@@ -16,7 +16,10 @@ st.title("Design Verification Testing (DVT) Test Planner with AI Coverage Analys
 # ---------------- OpenAI Setup ----------------
 # Make sure you set your API key in the environment:
 # export OPENAI_API_KEY="your-key"
-openai.api_key = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    st.error("OpenAI API key not set. Please configure the environment variable OPENAI_API_KEY.")
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # ---------------- File Config ----------------
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # contains your taxonomy in column 4
@@ -88,12 +91,12 @@ Respond with three sections:
 2. Gaps (missing tests)
 3. Suggestions (improvements for full coverage)
 """
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",  # use "gpt-4o" for deeper reasoning
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",   # or "gpt-4o" for deeper reasoning
         messages=[{"role": "user", "content": prompt}],
         temperature=0.2
     )
-    return response["choices"][0]["message"]["content"]
+    return response.choices[0].message.content
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
