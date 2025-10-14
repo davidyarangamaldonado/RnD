@@ -12,7 +12,7 @@ st.title("DVT Test Planner with AI Coverage Analysis")
 
 # ---------------- Security Info Banner ----------------
 st.info(
-    "Your OpenAI API key is used securely. "
+    "Your OpenAI API key is used securely."
 )
 
 # ---------------- OpenAI API Key ----------------
@@ -56,22 +56,19 @@ def parse_plan_to_json(text):
         if line.strip() == "":
             continue
         if line.endswith(":"):  # treat as section header
-            if current_section["title"]:
+            if current_section["title"] or current_section["content"]:
                 plan_dict["sections"].append(current_section)
             current_section = {"title": line.strip(), "content": []}
         else:
             current_section["content"].append(line.strip())
 
-    if current_section["title"]:
+    if current_section["title"] or current_section["content"]:
         plan_dict["sections"].append(current_section)
 
     return plan_dict
 
 # ---------------- AI Coverage Analysis with fallback ----------------
 def analyze_coverage_openai(plan_json, taxonomy_rules, model="gpt-3.5-turbo"):
-    """
-    Uses OpenAI chat API to analyze test coverage.
-    """
     prompt = f"""
 You are a senior test validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
 Compare the test plan against the taxonomy and identify strengths, gaps, and suggestions. Also, look online for any suggestions for the test plan. 
@@ -95,9 +92,8 @@ Respond with three sections:
         )
         return response.choices[0].message.content
     except Exception as e:
-        # Fallback mock for proof-of-concept
         return (
-            "You need a better OpenAI API key"
+            "OpenAI API call failed or quota exceeded. 
         )
 
 # ---------------- Main UI ----------------
@@ -148,7 +144,13 @@ if df is not None:
 
         # Parse to JSON
         plan_json = parse_plan_to_json(plan_text)
-        st.json(plan_json)
+
+        # Only show JSON if it has sections
+        if plan_json["sections"]:
+            st.subheader("Parsed Test Plan (JSON)")
+            st.json(plan_json)
+        else:
+            st.warning("⚠️ Uploaded test plan is empty or has no recognizable sections.")
 
         # Run OpenAI Analysis
         if st.button("Analyze Test plan"):
