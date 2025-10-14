@@ -8,12 +8,11 @@ import openai
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="DVT Test Planner with AI", layout="wide")
-st.title("Design Verification Testing (DVT) Test Planner with AI Coverage Analysis")
+st.title("DVT Test Planner with AI Coverage Analysis")
 
 # ---------------- Security Info Banner ----------------
 st.info(
-    "🔒 Your OpenAI API key is used securely. "
-    "It is stored in Streamlit secrets and never exposed in the code or to other users."
+    "Your OpenAI API key is used securely. "
 )
 
 # ---------------- OpenAI API Key ----------------
@@ -105,10 +104,7 @@ Respond with three sections:
     except Exception as e:
         # Fallback mock for proof-of-concept
         return (
-            "⚠️ OpenAI API call failed. Using mock POC response.\n\n"
-            "Strengths:\n- Example test coverage identified.\n\n"
-            "Gaps:\n- Example missing test steps.\n\n"
-            "Suggestions:\n- Example suggestions for improvement."
+            "You need a better OpenAI API key"
         )
 
 # ---------------- Main UI ----------------
