@@ -74,11 +74,11 @@ def parse_plan_to_json(text):
 
     return plan_dict
 
-# ---------------- AI Coverage Analysis using OpenAI ----------------
+# ---------------- AI Coverage Analysis with fallback ----------------
 def analyze_coverage_openai(plan_json, taxonomy_rules, model="gpt-3.5-turbo"):
     """
-    Uses OpenAI >=1.0.0 chat API to analyze test coverage.
-    Defaults to free GPT-3.5-turbo model for POC.
+    Uses OpenAI chat API to analyze test coverage.
+    Fallbacks to a mock response if API fails (quota, model access, etc.).
     """
     prompt = f"""
 You are a senior validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
@@ -103,7 +103,13 @@ Respond with three sections:
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"Error calling OpenAI API: {e}"
+        # Fallback mock for proof-of-concept
+        return (
+            "⚠️ OpenAI API call failed. Using mock POC response.\n\n"
+            "Strengths:\n- Example test coverage identified.\n\n"
+            "Gaps:\n- Example missing test steps.\n\n"
+            "Suggestions:\n- Example suggestions for improvement."
+        )
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
