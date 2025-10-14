@@ -93,7 +93,7 @@ Respond with three sections:
         return response.choices[0].message.content
     except Exception as e:
         return (
-            "OpenAI API call failed or quota exceeded. 
+            "OpenAI API call failed or quota exceeded."
         )
 
 # ---------------- Main UI ----------------
