@@ -1,16 +1,23 @@
 import streamlit as st
 import pandas as pd
-import os
 from docx import Document
+import json
 from io import BytesIO
 from PIL import Image
-import base64
-import json
-import subprocess  # <-- Added for Ollama CLI
+import openai
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="DVT Test Planner with AI", layout="wide")
 st.title("Design Verification Testing (DVT) Test Planner with AI Coverage Analysis")
+
+# ---------------- Security Info Banner ----------------
+st.info(
+    "🔒 Your OpenAI API key is used securely. "
+    "It is stored in Streamlit secrets and never exposed in the code or to other users."
+)
+
+# ---------------- OpenAI API Key ----------------
+openai.api_key = st.secrets["openai"]["api_key"]
 
 # ---------------- File Config ----------------
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # contains your taxonomy in column 4
@@ -42,10 +49,6 @@ def txt_to_text(file):
 
 # ---------------- JSON Structuring ----------------
 def parse_plan_to_json(text):
-    """
-    A simple parser: split by newlines and guess sections.
-    Later you can make this more advanced by using regex or headings.
-    """
     plan_dict = {"sections": []}
     lines = text.split("\n")
     current_section = {"title": "", "content": []}
@@ -65,10 +68,10 @@ def parse_plan_to_json(text):
 
     return plan_dict
 
-# ---------------- AI Coverage Analysis using Ollama ----------------
-def analyze_coverage(plan_json, taxonomy_rules, model="llama2"):
+# ---------------- AI Coverage Analysis using OpenAI ----------------
+def analyze_coverage_openai(plan_json, taxonomy_rules, model="gpt-4"):
     """
-    Calls Ollama CLI locally to perform test coverage analysis.
+    Calls OpenAI API to perform test coverage analysis.
     """
     prompt = f"""
 You are a senior validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
@@ -86,15 +89,14 @@ Respond with three sections:
 3. Suggestions (improvements for full coverage)
 """
     try:
-        result = subprocess.run(
-            ["ollama", "generate", model, prompt],
-            capture_output=True,
-            text=True,
-            check=True
+        response = openai.ChatCompletion.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
         )
-        return result.stdout
-    except subprocess.CalledProcessError as e:
-        return f"Error calling Ollama: {e.stderr}"
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error calling OpenAI API: {e}"
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -148,10 +150,10 @@ if df is not None:
         st.subheader("Parsed Test Plan (JSON)")
         st.json(plan_json)
 
-        # Run Ollama Analysis
+        # Run OpenAI Analysis
         if st.button("Analyze Test Coverage"):
-            with st.spinner("Analyzing coverage with Ollama..."):
-                analysis = analyze_coverage(plan_json, matched_taxonomy)
+            with st.spinner("Analyzing coverage with OpenAI..."):
+                analysis = analyze_coverage_openai(plan_json, matched_taxonomy)
             st.subheader("AI Coverage Analysis")
             st.markdown(analysis)
 else:
