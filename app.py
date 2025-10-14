@@ -93,7 +93,10 @@ Respond with three sections:
         return response.choices[0].message.content
     except Exception as e:
         return (
-            "OpenAI API call failed or quota exceeded."
+            "⚠️ OpenAI API call failed or quota exceeded. Using mock POC response:\n\n"
+            "Test covered:\n- Example coverage identified.\n\n"
+            "Missing test cases:\n- Example missing tests.\n\n"
+            "Suggestions:\n- Example improvements for full coverage."
         )
 
 # ---------------- Main UI ----------------
@@ -144,13 +147,6 @@ if df is not None:
 
         # Parse to JSON
         plan_json = parse_plan_to_json(plan_text)
-
-        # Only show JSON if it has sections
-        if plan_json["sections"]:
-            st.subheader("Parsed Test Plan (JSON)")
-            st.json(plan_json)
-        else:
-            st.warning("⚠️ Uploaded test plan is empty or has no recognizable sections.")
 
         # Run OpenAI Analysis
         if st.button("Analyze Test plan"):
