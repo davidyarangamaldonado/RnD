@@ -19,6 +19,12 @@ st.info(
 # ---------------- OpenAI API Key ----------------
 openai.api_key = st.secrets["openai"]["api_key"]
 
+# ---------------- Free Model Info ----------------
+st.warning(
+    "ℹ️ Proof-of-concept mode: using free model `gpt-3.5-turbo`. "
+    "GPT-4 is not required for testing and may not be accessible with your key."
+)
+
 # ---------------- File Config ----------------
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # contains your taxonomy in column 4
 
@@ -68,10 +74,11 @@ def parse_plan_to_json(text):
 
     return plan_dict
 
-# ---------------- AI Coverage Analysis using OpenAI >=1.0.0 ----------------
-def analyze_coverage_openai(plan_json, taxonomy_rules, model="gpt-4"):
+# ---------------- AI Coverage Analysis using OpenAI ----------------
+def analyze_coverage_openai(plan_json, taxonomy_rules, model="gpt-3.5-turbo"):
     """
     Uses OpenAI >=1.0.0 chat API to analyze test coverage.
+    Defaults to free GPT-3.5-turbo model for POC.
     """
     prompt = f"""
 You are a senior validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
