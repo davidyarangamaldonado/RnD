@@ -77,11 +77,10 @@ def parse_plan_to_json(text):
 def analyze_coverage_openai(plan_json, taxonomy_rules, model="gpt-3.5-turbo"):
     """
     Uses OpenAI chat API to analyze test coverage.
-    Fallbacks to a mock response if API fails (quota, model access, etc.).
     """
     prompt = f"""
-You are a senior validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
-Compare the test plan against the taxonomy and identify strengths, gaps, and suggestions.
+You are a senior test validation engineer. A test plan in JSON format is given, along with the required test taxonomy.
+Compare the test plan against the taxonomy and identify strengths, gaps, and suggestions. Also, look online for any suggestions for the test plan. 
 
 Taxonomy of Required Tests:
 {taxonomy_rules}
@@ -90,9 +89,9 @@ Proposed Test Plan (JSON):
 {json.dumps(plan_json, indent=2)}
 
 Respond with three sections:
-1. Strengths (covered tests)
-2. Gaps (missing tests)
-3. Suggestions (improvements for full coverage)
+1. Test covered 
+2. Missing test cases
+3. Suggestions (improvements for full test coverage)
 """
     try:
         response = openai.chat.completions.create(
@@ -155,12 +154,10 @@ if df is not None:
 
         # Parse to JSON
         plan_json = parse_plan_to_json(plan_text)
-
-        st.subheader("Parsed Test Plan (JSON)")
         st.json(plan_json)
 
         # Run OpenAI Analysis
-        if st.button("Analyze Test Coverage"):
+        if st.button("Analyze Test plan"):
             with st.spinner("Analyzing coverage with OpenAI..."):
                 analysis = analyze_coverage_openai(plan_json, matched_taxonomy)
             st.subheader("AI Coverage Analysis")
