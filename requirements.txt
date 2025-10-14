@@ -1,0 +1,12 @@
+streamlit
+pandas
+python-docx
+openpyxl
+xlrd
+Pillow
+mammoth
+sentence-transformers
+scikit-learn
+numpy
+Pillow
+
