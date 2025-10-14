@@ -113,38 +113,45 @@ if df is not None:
 
     # User enters requirement ID
     user_input = st.text_input("Enter the Requirement ID (e.g. FREQ-1):").strip()
+    user_input_upper = user_input.upper()
 
-    # User uploads test plan
-    uploaded_file = st.file_uploader("Upload Proposed Test Plan (.docx or .txt)", type=["docx", "txt"])
-
-    if user_input and uploaded_file:
-        user_input_upper = user_input.upper()
+    valid_id = False
+    if user_input_upper:
         if user_input_upper in id_to_description:
-            matched_description = id_to_description[user_input_upper]
-            matched_taxonomy = id_to_taxonomy.get(user_input_upper, "No taxonomy found for this requirement.")
-            
-            st.success(f"**{user_input_upper}**\n\n**Description:** {matched_description}")
-
-            # Extract text from file
-            if uploaded_file.name.endswith(".docx"):
-                plan_text = docx_to_text(uploaded_file)
-            else:
-                plan_text = txt_to_text(uploaded_file)
-
-            # Parse to JSON
-            plan_json = parse_plan_to_json(plan_text)
-
-            st.subheader("Parsed Test Plan (JSON)")
-            st.json(plan_json)
-
-            # Run AI Analysis using taxonomy from column 4
-            if st.button("Analyze Test Coverage"):
-                with st.spinner("Analyzing coverage with AI..."):
-                    analysis = analyze_coverage(plan_json, matched_taxonomy)
-                st.subheader("AI Coverage Analysis")
-                st.markdown(analysis)
-
+            valid_id = True
+            st.success(f"**{user_input_upper}**\n\n**Description:** {id_to_description[user_input_upper]}")
         else:
             st.error("No match found for that Requirement ID.")
+
+    # File uploader is disabled until a valid requirement ID is entered
+    uploaded_file = st.file_uploader(
+        "Upload Proposed Test Plan (.docx or .txt)", 
+        type=["docx", "txt"], 
+        disabled=not valid_id
+    )
+
+    # Proceed with coverage analysis only if both ID and file are provided
+    if valid_id and uploaded_file:
+        matched_description = id_to_description[user_input_upper]
+        matched_taxonomy = id_to_taxonomy.get(user_input_upper, "No taxonomy found for this requirement.")
+
+        # Extract text from file
+        if uploaded_file.name.endswith(".docx"):
+            plan_text = docx_to_text(uploaded_file)
+        else:
+            plan_text = txt_to_text(uploaded_file)
+
+        # Parse to JSON
+        plan_json = parse_plan_to_json(plan_text)
+
+        st.subheader("Parsed Test Plan (JSON)")
+        st.json(plan_json)
+
+        # Run AI Analysis using taxonomy from column 4
+        if st.button("Analyze Test Coverage"):
+            with st.spinner("Analyzing coverage with AI..."):
+                analysis = analyze_coverage(plan_json, matched_taxonomy)
+            st.subheader("AI Coverage Analysis")
+            st.markdown(analysis)
 else:
     st.error("Could not load the requirements file.")
