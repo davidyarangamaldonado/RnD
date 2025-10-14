@@ -18,12 +18,6 @@ st.info(
 # ---------------- OpenAI API Key ----------------
 openai.api_key = st.secrets["openai"]["api_key"]
 
-# ---------------- Free Model Info ----------------
-st.warning(
-    "ℹ️ Proof-of-concept mode: using free model `gpt-3.5-turbo`. "
-    "GPT-4 is not required for testing and may not be accessible with your key."
-)
-
 # ---------------- File Config ----------------
 REQUIREMENTS_FILE = "dvt_requirements.csv"  # contains your taxonomy in column 4
 
