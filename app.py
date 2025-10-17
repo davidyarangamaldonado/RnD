@@ -1,27 +1,25 @@
-import streamlit as st
-import pandas as pd
-from docx import Document
 import os
 import re
-import google.generativeai as genai
+import pandas as pd
+import streamlit as st
+from docx import Document
+from google import genai
 
-# ---------------- Streamlit Setup ----------------
+# Set up page configuration
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
 st.title("RnD DVT Test Planner")
 
-# ---------------- Repo / Paths ----------------
+# Define paths
 REPO_PATH = "."  # Path to your linked repo
 REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.csv")
 HISTORY_DIR = os.path.join(REPO_PATH, "history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
-# ---------------- Load API Key ----------------
+# Load API key from Streamlit secrets or environment variable
 def load_api_key():
-    # Try Streamlit secrets first
     api_key = st.secrets.get("google", {}).get("api_key")
     if api_key:
         return api_key
-    # Fallback to environment variable
     api_key = os.environ.get("GOOGLE_API_KEY")
     if api_key:
         return api_key
@@ -31,10 +29,12 @@ api_key = load_api_key()
 if not api_key:
     st.error("Google Gemini API key not found. Please add it in `.streamlit/secrets.toml` or set the environment variable GOOGLE_API_KEY.")
     st.stop()
-genai.api_key = api_key
-st.write("✅ Google Gemini API key loaded successfully")  # Debug: confirm key is loaded
 
-# ---------------- Read CSV ----------------
+# Initialize GenAI client
+client = genai.Client(api_key=api_key)
+st.write("✅ Google Gemini API key loaded successfully")
+
+# Read requirements file
 def read_requirements_file():
     if not os.path.exists(REQUIREMENTS_FILE):
         st.error(f"Requirements file not found at {REQUIREMENTS_FILE}")
@@ -46,12 +46,12 @@ def read_requirements_file():
         st.error(f"Failed to read requirements file: {e}")
         return None
 
-# ---------------- Word Parsing ----------------
+# Convert DOCX to text
 def docx_to_text(file):
     doc = Document(file)
     return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
 
-# ---------------- Load Rules ----------------
+# Load rules for a specific requirement
 def load_rules_for_requirement(requirement_id):
     rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
     if os.path.exists(rule_file):
@@ -65,7 +65,7 @@ def load_rules_for_requirement(requirement_id):
         st.warning(f"No rules file found for {requirement_id}")
         return []
 
-# ---------------- Token Normalization ----------------
+# Normalize tokens
 def normalize_token(token):
     token = token.lower()
     match = re.match(r'(-?\d+\.?\d*)([a-z%]*)', token)
@@ -79,7 +79,7 @@ def normalize_token(token):
         token = re.sub(r'[^a-z0-9]', '', token)
         return token
 
-# ---------------- Extract Tokens ----------------
+# Extract check items from text
 def extract_check_items_robust(text):
     text = text.lower()
     number_matches = re.findall(r'-?\d+\.?\d*\s*[a-z%]*', text)
@@ -91,7 +91,7 @@ def extract_check_items_robust(text):
             items.add(cleaned)
     return items
 
-# ---------------- Compare Rule Lines ----------------
+# Compare rule lines with plan text
 def get_missing_rule_lines(rule_lines, plan_text):
     plan_tokens = extract_check_items_robust(plan_text)
     normalized_plan_tokens = {normalize_token(t) for t in plan_tokens}
@@ -105,7 +105,7 @@ def get_missing_rule_lines(rule_lines, plan_text):
 
     return missing_lines
 
-# ---------------- History ----------------
+# Load history for a requirement
 def load_history(requirement_id):
     if not os.path.exists(HISTORY_DIR):
         return ""
@@ -116,6 +116,7 @@ def load_history(requirement_id):
             history_texts.append(f.read())
     return "\n".join(history_texts)
 
+# Save history for a requirement
 def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
     timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
     history_file = os.path.join(HISTORY_DIR, f"{requirement_id}_{timestamp}.txt")
@@ -124,7 +125,7 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- AI Suggestions ----------------
+# Get AI suggestions
 def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return []
@@ -150,17 +151,9 @@ History of previous analyses for this requirement:
 """
 
     try:
-        response = genai.chat(
-            model="chat-bison-1",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.5,
-            max_output_tokens=300
-        )
-
-        ai_text = response.last.response
+        response = client.chats.create(model="gemini-1.5-flash")
+        response.send_message(user_prompt)
+        ai_text = response.get_response().text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
 
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
@@ -169,7 +162,7 @@ History of previous analyses for this requirement:
     except Exception as e:
         return [f"AI suggestion failed: {e}"]
 
-# ---------------- Main UI ----------------
+# Main UI
 df = read_requirements_file()
 
 if df is not None:
