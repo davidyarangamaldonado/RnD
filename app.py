@@ -113,15 +113,21 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- AI Suggestions ----------------
+# ---------------- AI Suggestions with Gemini Chat ----------------
 def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return []
 
     history_context = load_history(requirement_id)
 
-    prompt = f"""
+    system_prompt = """
 You are an engineering test coverage assistant.
+Your task is to analyze a proposed test plan and provide actionable suggestions for missing coverage.
+Do not include items already covered.
+Be concise and provide suggestions as bullet points.
+"""
+
+    user_prompt = f"""
 Proposed test plan:
 {plan_text}
 
@@ -130,22 +136,20 @@ Missing rule lines:
 
 History of previous analyses for this requirement:
 {history_context}
-
-Provide actionable suggestions for better test coverage in concise bullet points.
-For example:
-- Add a test at 65C
-- Test with 128-QAM modulation
-Do not include items already covered.
 """
 
     try:
-        response = genai.models.generate(
-            model="gemini-1",
-            prompt=prompt,
+        response = genai.chat(
+            model="chat-bison-1",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
             temperature=0.5,
             max_output_tokens=300
         )
-        ai_text = response.result[0].content[0].text
+
+        ai_text = response.last.response
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
 
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
