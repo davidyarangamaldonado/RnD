@@ -2,27 +2,27 @@ import streamlit as st
 import pandas as pd
 from docx import Document
 from io import BytesIO
+import requests
 import openai
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="DVT Test Planner - Rule + AI", layout="wide")
 st.title("DVT Test Planner with Rule-Based + AI Coverage Analysis")
 
-# ---------------- File Config ----------------
-REQUIREMENTS_FILE = "dvt_requirements.csv"   # CSV in your repo/local
+# ---------------- GitHub Config ----------------
+GITHUB_BASE_URL = "https://raw.githubusercontent.com/your-username/your-repo/main/" 
+REQUIREMENTS_FILE_NAME = "dvt_requirements.csv"
 
-# ---------------- Read Requirements ----------------
-def read_requirements_file():
+# ---------------- Fetch Requirements from GitHub ----------------
+def fetch_requirements_from_github():
+    url = f"{GITHUB_BASE_URL}{REQUIREMENTS_FILE_NAME}"
     try:
-        if REQUIREMENTS_FILE.endswith(".csv"):
-            return pd.read_csv(REQUIREMENTS_FILE)
-        elif REQUIREMENTS_FILE.endswith(".xlsx"):
-            return pd.read_excel(REQUIREMENTS_FILE, engine="openpyxl")
-        else:
-            st.error("Unsupported requirements file format.")
-            return None
+        response = requests.get(url)
+        response.raise_for_status()
+        df = pd.read_csv(BytesIO(response.content))
+        return df
     except Exception as e:
-        st.error(f"Failed to read requirements file: {e}")
+        st.error(f"Failed to fetch requirements file from GitHub: {e}")
         return None
 
 # ---------------- Word Parsing ----------------
@@ -30,14 +30,18 @@ def docx_to_text(file):
     doc = Document(file)
     return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
-# ---------------- Load Rules ----------------
-def load_rules_for_requirement(requirement_id, uploaded_file=None):
-    """Use uploaded rule file if provided, otherwise return empty"""
-    if uploaded_file:
-        doc = Document(uploaded_file)
+# ---------------- Load Rules from GitHub ----------------
+def load_rules_for_requirement(requirement_id):
+    """Fetch the rule .docx for the given requirement ID from GitHub"""
+    url = f"{GITHUB_BASE_URL}{requirement_id}_Rule.docx"
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        doc = Document(BytesIO(response.content))
         return "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
-    # If no uploaded file, return empty (no GitHub fetching here)
-    return ""
+    except Exception as e:
+        st.warning(f"No rules file found for {requirement_id}: {e}")
+        return ""
 
 # ---------------- Rule-Based Analysis ----------------
 def analyze_rule_based(plan_text, requirement_id, taxonomy_rule):
@@ -98,7 +102,7 @@ def get_ai_suggestions(plan_text, missing_tests):
         return f"_AI suggestion failed: {e}_"
 
 # ---------------- Main UI ----------------
-df = read_requirements_file()
+df = fetch_requirements_from_github()
 
 if df is not None:
     df.columns = [str(col).strip() for col in df.columns]
@@ -130,12 +134,6 @@ if df is not None:
             st.error("No match found for that Requirement ID.")
 
     if valid_id:
-        # --- Rule File uploader
-        uploaded_rule_file = st.file_uploader(
-            "Upload Rule File (.docx) for this Requirement ID",
-            type=["docx"]
-        )
-
         # --- Test Plan uploader
         uploaded_plan_file = st.file_uploader(
             "Upload Proposed Test Plan (.docx or .txt)", 
@@ -150,9 +148,10 @@ if df is not None:
 
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
-                    taxonomy_rule = load_rules_for_requirement(user_input, uploaded_file=uploaded_rule_file)
+                    # Load rule from GitHub automatically
+                    taxonomy_rule = load_rules_for_requirement(user_input)
                     if not taxonomy_rule:
-                        st.warning(f"⚠️ No rules found for {user_input}. Please upload a rule file.")
+                        st.warning(f"⚠️ No rules found for {user_input}. Check that the rule file exists in your GitHub repo.")
                     analysis_output, missing_tests = analyze_rule_based(plan_text, user_input, taxonomy_rule)
                     st.markdown(analysis_output)
 
@@ -161,4 +160,4 @@ if df is not None:
                         ai_output = get_ai_suggestions(plan_text, missing_tests)
                         st.markdown(ai_output)
 else:
-    st.error("Could not load the requirements file.")
+    st.error("Could not load the requirements file from GitHub.")
