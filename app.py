@@ -29,6 +29,21 @@ def docx_to_text(file):
     doc = Document(file)
     return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
 
+# ---------------- Load Rules (Graceful Handling) ----------------
+def load_rules_for_requirement(requirement_id):
+    rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
+    st.write(f"Looking for rule file: {rule_file}")  # Debug info
+    if os.path.exists(rule_file):
+        try:
+            doc = Document(rule_file)
+            return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+        except Exception as e:
+            st.warning(f"Failed to read rule file {rule_file}: {e}")
+            return []
+    else:
+        st.warning(f"No rules file found for {requirement_id}")
+        return []
+
 # ---------------- Token Normalization ----------------
 def normalize_token(token):
     token = token.lower()
@@ -145,7 +160,7 @@ if df is not None:
                     rule_lines = load_rules_for_requirement(user_input)
 
                     if not rule_lines:
-                        st.warning(f"Rule.docx missing")
+                        st.warning("No rule lines available for analysis.")
                     else:
                         missing_lines = get_partial_missing_rule_lines(rule_lines, plan_text)
 
