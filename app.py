@@ -32,7 +32,7 @@ if not api_key:
 
 # Initialize GenAI client
 client = genai.Client(api_key=api_key)
-st.write("✅ Google Gemini API key loaded successfully")
+st.write("Google Gemini API key loaded successfully")
 
 # Read requirements file
 def read_requirements_file():
