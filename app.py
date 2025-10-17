@@ -47,41 +47,46 @@ def normalize_text(text):
     return text.strip()
 
 # ---------------- Smart Comparison (Covered / Missing) ----------------
-def compare_rule_to_plan_smart(rule_text, plan_text):
+def extract_check_items(text):
     """
-    Smart comparison: check each rule line if it is fully covered somewhere in the proposed plan.
-    Only two statuses: covered ✅ and missing ❌
+    Extract numbers, alphanumeric items with units, and meaningful phrases.
+    Returns a set of normalized check items.
     """
-    plan_norm = normalize_text(plan_text)
+    text = text.lower()
+    # Split by comma, 'and', or 'with' for phrases
+    phrases = re.split(r',|\band\b|\bwith\b', text)
+    items = set()
+    for ph in phrases:
+        ph = ph.strip()
+        # Extract numbers and alphanumeric combos
+        numbers = re.findall(r'\d+\.?\d*[-]?\w*', ph)
+        if numbers:
+            for n in numbers:
+                items.add(n)
+        else:
+            # Add cleaned phrase as token
+            cleaned = re.sub(r'[^\w\d\-]', '', ph)
+            if cleaned:
+                items.add(cleaned)
+    return items
+
+def compare_rule_to_plan_very_smart(rule_text, plan_text):
+    """
+    Granular comparison:
+    - Splits each rule line into multiple check items.
+    - Marks as 'covered' only if all items are present in proposed plan.
+    """
+    plan_items = extract_check_items(plan_text)
     rule_lines = [line.strip() for line in rule_text.split("\n") if line.strip()]
     results = []
 
     for rline in rule_lines:
-        rline_norm = normalize_text(rline)
-
-        # Extract numbers and words
-        numbers_in_rline = re.findall(r'\d+\.?\d*', rline_norm)
-        words_in_rline = [w for w in rline_norm.split() if not w.isdigit()]
-
-        all_matched = True
-
-        # Check numbers
-        for num in numbers_in_rline:
-            if num not in plan_norm:
-                all_matched = False
-                break
-
-        # Check words
-        if all_matched:
-            for word in words_in_rline:
-                if word not in plan_norm:
-                    all_matched = False
-                    break
-
-        status = "covered" if all_matched else "missing"
-        results.append((rline, status))
-
+        rule_items = extract_check_items(rline)
+        missing_items = [item for item in rule_items if item not in plan_items]
+        status = "covered" if not missing_items else "missing"
+        results.append((rline, status, missing_items))  # Keep missing items for debug
     return results
+
 
 # ---------------- AI Suggestions Placeholder ----------------
 def get_ai_suggestions(plan_text, missing_items):
