@@ -12,23 +12,15 @@ st.title("RnD DVT Test Planner")
 # ---------------- Repo / API Config ----------------
 REPO_PATH = "."  # Path to your linked repo
 REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.csv")
-API_KEY_FILE = os.path.join(REPO_PATH, "API_KEY")
 HISTORY_DIR = os.path.join(REPO_PATH, "history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
-# ---------------- Load API Key ----------------
-def load_api_key():
-    if not os.path.exists(API_KEY_FILE):
-        st.error(f"API key file not found at {API_KEY_FILE}")
-        return None
-    with open(API_KEY_FILE, "r") as f:
-        key = f.read().strip()
-    return key
-
-api_key = load_api_key()
-if api_key:
+# ---------------- Load API Key from Streamlit Secrets ----------------
+try:
+    api_key = st.secrets["google"]["api_key"]
     genai.api_key = api_key
-else:
+except Exception as e:
+    st.error("Google Gemini API key not found in Streamlit secrets. Please add it in .streamlit/secrets.toml")
     st.stop()
 
 # ---------------- Read CSV ----------------
