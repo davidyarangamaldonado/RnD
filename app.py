@@ -42,51 +42,56 @@ def load_rules_for_requirement(requirement_id):
 # ---------------- Utility ----------------
 def normalize_text(text):
     text = text.lower()
-    text = re.sub(r'[^\w\s\d]', '', text)  # Remove punctuation
-    text = re.sub(r'\s+', ' ', text)       # Normalize whitespace
+    text = re.sub(r'[^\w\s\d\-]', '', text)  # Remove punctuation
+    text = re.sub(r'\s+', ' ', text)         # Normalize whitespace
     return text.strip()
 
-# ---------------- Smart Comparison (Covered / Missing) ----------------
-def extract_check_items(text):
+# ---------------- Robust Smart Comparison ----------------
+def extract_check_items_robust(text):
     """
-    Extract numbers, alphanumeric items with units, and meaningful phrases.
-    Returns a set of normalized check items.
+    Extracts:
+    - Numbers with optional units (e.g., 25C, -30C, 5GHz)
+    - Alphanumeric items (e.g., 256-QAM)
+    - Meaningful phrases (words longer than 2 letters)
+    Returns a set of normalized items.
     """
     text = text.lower()
-    # Split by comma, 'and', or 'with' for phrases
-    phrases = re.split(r',|\band\b|\bwith\b', text)
+    
+    # Find numbers with optional units, signed numbers
+    number_matches = re.findall(r'-?\d+\.?\d*\w*', text)
+    
+    # Find alphanumeric combos (like 256-QAM)
+    alnum_matches = re.findall(r'\b[\w\-]{2,}\b', text)
+    
+    # Combine and normalize
     items = set()
-    for ph in phrases:
-        ph = ph.strip()
-        # Extract numbers and alphanumeric combos
-        numbers = re.findall(r'\d+\.?\d*[-]?\w*', ph)
-        if numbers:
-            for n in numbers:
-                items.add(n)
-        else:
-            # Add cleaned phrase as token
-            cleaned = re.sub(r'[^\w\d\-]', '', ph)
-            if cleaned:
-                items.add(cleaned)
+    for n in number_matches + alnum_matches:
+        cleaned = re.sub(r'[^\w\d\-]', '', n)
+        if cleaned:
+            items.add(cleaned)
     return items
 
-def compare_rule_to_plan_very_smart(rule_text, plan_text):
+
+def compare_rule_to_plan_robust(rule_text, plan_text):
     """
     Granular comparison:
     - Splits each rule line into multiple check items.
-    - Marks as 'covered' only if all items are present in proposed plan.
+    - Marks 'covered' only if all items are present in proposed plan.
+    - Returns list of tuples: (rule_line, status, missing_items_list)
     """
-    plan_items = extract_check_items(plan_text)
+    # Normalize entire plan text once
+    plan_items = extract_check_items_robust(plan_text)
+
     rule_lines = [line.strip() for line in rule_text.split("\n") if line.strip()]
     results = []
 
     for rline in rule_lines:
-        rule_items = extract_check_items(rline)
+        rule_items = extract_check_items_robust(rline)
         missing_items = [item for item in rule_items if item not in plan_items]
         status = "covered" if not missing_items else "missing"
-        results.append((rline, status, missing_items))  # Keep missing items for debug
-    return results
+        results.append((rline, status, missing_items))
 
+    return results
 
 # ---------------- AI Suggestions Placeholder ----------------
 def get_ai_suggestions(plan_text, missing_items):
@@ -130,7 +135,10 @@ if df is not None:
             if uploaded_plan_file.name.endswith(".docx"):
                 plan_text = docx_to_text(uploaded_plan_file)
             else:
-                plan_text = uploaded_plan_file.read().decode("utf-8")
+                try:
+                    plan_text = uploaded_plan_file.read().decode("utf-8")
+                except UnicodeDecodeError:
+                    plan_text = uploaded_plan_file.read().decode("latin1")
 
             # --- Display Proposed Test Plan nicely
             st.markdown("## Your Proposed Plan")
@@ -145,8 +153,8 @@ if df is not None:
                     if not rule_text:
                         st.warning(f"Rule.docx missing")
                     else:
-                        # --- Smart comparison
-                        comparison_results = compare_rule_to_plan_smart(rule_text, plan_text)
+                        # --- Robust smart comparison
+                        comparison_results = compare_rule_to_plan_robust(rule_text, plan_text)
 
                         # --- Display Legend
                         st.markdown("## Legend")
@@ -155,14 +163,14 @@ if df is not None:
 
                         # --- Display Test Coverage Suggestions
                         st.markdown("## Test Coverage Suggestions")
-                        for item, status in comparison_results:
+                        for item, status, missing_tokens in comparison_results:
                             if status == "covered":
                                 st.markdown(f"<span style='color:green'>✅ {item}</span>", unsafe_allow_html=True)
                             else:
-                                st.markdown(f"<span style='color:red'>❌ {item}</span>", unsafe_allow_html=True)
+                                st.markdown(f"<span style='color:red'>❌ {item}  (Missing: {', '.join(missing_tokens)})</span>", unsafe_allow_html=True)
 
                         # --- AI-based suggestions placeholder
-                        missing_items = [item for item, status in comparison_results if status == "missing"]
+                        missing_items = [mi for _, status, mi_list in comparison_results if status == "missing" for mi in mi_list]
                         ai_output = get_ai_suggestions(plan_text, missing_items)
                         for suggestion in ai_output:
                             st.markdown(suggestion)
