@@ -161,13 +161,18 @@ if df is not None:
                         st.markdown("<span style='color:green'>✅ Covered: Rule item is fully addressed in the proposed plan</span>", unsafe_allow_html=True)
                         st.markdown("<span style='color:red'>❌ Missing: Rule item is not addressed in the proposed plan</span>", unsafe_allow_html=True)
 
-                        # --- Display Test Coverage Suggestions (color-only highlight)
+                        # --- Display Test Coverage Suggestions (smart color highlighting)
                         st.markdown("## Test Coverage Suggestions")
-                        for item, status, _ in comparison_results:  # ignore missing tokens
+                        for item, status, missing_tokens in comparison_results:
                             if status == "covered":
                                 st.markdown(f"<span style='color:green'>✅ {item}</span>", unsafe_allow_html=True)
                             else:
-                                st.markdown(f"<span style='color:red'>❌ {item}</span>", unsafe_allow_html=True)
+                                # Split rule line into tokens and highlight each individually
+                                highlighted_line = item
+                                for token in missing_tokens:
+                                    # Replace missing token with red-highlighted version
+                                    highlighted_line = re.sub(rf'\b{re.escape(token)}\b', f"<span style='color:red'>{token}</span>", highlighted_line, flags=re.IGNORECASE)
+                                st.markdown(f"❌ {highlighted_line}", unsafe_allow_html=True)
 
                         # --- AI-based suggestions placeholder
                         missing_items = [mi for _, status, mi_list in comparison_results if status == "missing" for mi in mi_list]
