@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
+import requests
+from io import BytesIO
 import openai
 
 # ---------------- Streamlit Setup ----------------
@@ -8,8 +10,9 @@ st.set_page_config(page_title="DVT Test Planner - Rule + AI", layout="wide")
 st.title("DVT Test Planner with Rule-Based + AI Coverage Analysis")
 
 # ---------------- File Config ----------------
-REQUIREMENTS_FILE = "dvt_requirements.csv"          # stays in your GitHub repo
-REQUIREMENT_RULE_FILE = "RequirementID_Rule.docx"   # rules file also in GitHub repo
+REQUIREMENTS_FILE = "dvt_requirements.csv"   # CSV in your GitHub repo
+GITHUB_RULES_BASE_URL = "https://raw.githubusercontent.com/your-username/your-repo/main/" 
+# 👆 change to your repo path
 
 # ---------------- Read Requirements ----------------
 def read_requirements_file():
@@ -30,19 +33,18 @@ def docx_to_text(file):
     doc = Document(file)
     return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
-def load_rules_from_docx(path):
-    rules_dict = {}
+def load_rules_for_requirement(requirement_id):
+    """Fetch the rule .docx for the given requirement ID from GitHub"""
+    url = f"{GITHUB_RULES_BASE_URL}{requirement_id}_Rule.docx"
     try:
-        doc = Document(path)
-        for para in doc.paragraphs:
-            text = para.text.strip()
-            if ":" in text:
-                req_id, rule_text = text.split(":", 1)
-                rules_dict[req_id.strip().upper()] = rule_text.strip()
-        return rules_dict
+        response = requests.get(url)
+        response.raise_for_status()
+        doc = Document(BytesIO(response.content))
+        # Rule text = all paragraphs combined
+        return "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
     except Exception as e:
-        st.error(f"Failed to load rules file: {e}")
-        return {}
+        st.warning(f"No rules file found for {requirement_id}: {e}")
+        return ""
 
 # ---------------- Rule-Based Analysis ----------------
 def analyze_rule_based(plan_text, requirement_id, taxonomy_rule):
@@ -93,7 +95,7 @@ def get_ai_suggestions(plan_text, missing_tests):
         """
 
         response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",  # lightweight but capable
+            model="gpt-4o-mini",
             messages=[{"role": "system", "content": "You are a senior test engineer."},
                       {"role": "user", "content": prompt}],
             max_tokens=400
@@ -104,7 +106,6 @@ def get_ai_suggestions(plan_text, missing_tests):
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
-rules_dict = load_rules_from_docx(REQUIREMENT_RULE_FILE)
 
 if df is not None:
     df.columns = [str(col).strip() for col in df.columns]
@@ -118,14 +119,14 @@ if df is not None:
 
     id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
 
-    # --- API Key input (stored in session state)
+    # --- API Key input
     st.sidebar.subheader("🔑 OpenAI API Key")
     api_key_input = st.sidebar.text_input("Enter API Key:", type="password")
     if api_key_input:
         st.session_state["OPENAI_API_KEY"] = api_key_input
 
     # --- Requirement ID input
-    user_input = st.text_input("Enter the Requirement ID (e.g. FREQ-1):").strip().upper()
+    user_input = st.text_input("Enter the Requirement ID (e.g. DS-1):").strip().upper()
     valid_id = False
 
     if user_input:
@@ -150,13 +151,12 @@ if df is not None:
 
         if st.button("Analyze Test Plan"):
             with st.spinner("Analyzing test plan..."):
-                taxonomy_rule = rules_dict.get(user_input, "")
+                taxonomy_rule = load_rules_for_requirement(user_input)
                 if not taxonomy_rule:
-                    st.warning("⚠️ No rules found for this Requirement ID in RequirementID_Rule.docx")
+                    st.warning(f"⚠️ No rules found for {user_input}_Rule.docx in repo.")
                 analysis_output, missing_tests = analyze_rule_based(plan_text, user_input, taxonomy_rule)
                 st.markdown(analysis_output)
 
-                # --- AI Suggestions (if API key is available)
                 if missing_tests:
                     st.markdown("### AI-Based Suggestions:")
                     ai_output = get_ai_suggestions(plan_text, missing_tests)
