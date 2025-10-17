@@ -39,15 +39,10 @@ def load_rules_for_requirement(requirement_id):
         st.warning(f"No rules file found for {requirement_id}")
         return ""
 
-# ---------------- Utility ----------------
+# ---------------- Token Normalization ----------------
 def normalize_token(token):
-    """
-    Normalize a token to handle:
-    - Modulation formats like 256-QAM vs 256QAM
-    - Numeric values with units like 25C vs 25 °C
-    """
+    """Normalize numeric/unit and alphanumeric engineering parameters."""
     token = token.lower()
-    
     # Separate number + optional unit
     match = re.match(r'(-?\d+\.?\d*)([a-z%]*)', token)
     if match:
@@ -63,7 +58,7 @@ def normalize_token(token):
 # ---------------- Extract Engineering/Test Parameters ----------------
 def extract_check_items_robust(text):
     """
-    Extracts numeric values, units, modulation orders, and alphanumeric test parameters.
+    Extract numeric values, units, modulation orders, and alphanumeric test parameters.
     """
     text = text.lower()
     # Numbers with optional units
@@ -96,11 +91,11 @@ def compare_rule_to_plan_robust(rule_text, plan_text):
 
 # ---------------- AI Suggestions Placeholder ----------------
 def get_ai_suggestions(plan_text, missing_items):
-    if missing_items:
-        # Return each missing item as an actionable bullet point
-        return [f"Missing parameter: {mi}" for mi in missing_items]
-    else:
-        return []
+    """Generate user-friendly actionable suggestions."""
+    suggestions = []
+    for mi in missing_items:
+        suggestions.append(f"Add test for parameter: {mi}")
+    return suggestions
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -160,11 +155,13 @@ if df is not None:
 
                         # --- Legend
                         st.markdown("## Legend")
-                        st.markdown("<span style='color:green'>✅ Covered: Parameter is addressed in the proposed plan</span>", unsafe_allow_html=True)
-                        st.markdown("<span style='color:red'>❌ Missing: Parameter is not addressed in the proposed plan</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:green'>✅ Covered: Parameter addressed in plan</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:red'>❌ Missing: Parameter not addressed in plan</span>", unsafe_allow_html=True)
 
-                        # --- Test Coverage Suggestions (bullets)
+                        # --- Test Coverage Suggestions
                         st.markdown("## Test Coverage Suggestions")
+
+                        # Precompute normalized plan items
                         plan_tokens = extract_check_items_robust(plan_text)
                         normalized_plan_items = {normalize_token(t) for t in plan_tokens}
 
