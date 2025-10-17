@@ -34,10 +34,10 @@ def load_rules_for_requirement(requirement_id):
     rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
     if os.path.exists(rule_file):
         doc = Document(rule_file)
-        return "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
+        return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
     else:
         st.warning(f"No rules file found for {requirement_id}")
-        return ""
+        return []
 
 # ---------------- Token Normalization ----------------
 def normalize_token(token):
@@ -53,7 +53,7 @@ def normalize_token(token):
         token = re.sub(r'[^a-z0-9]', '', token)
         return token
 
-# ---------------- Extract Engineering/Test Parameters ----------------
+# ---------------- Extract Tokens ----------------
 def extract_check_items_robust(text):
     text = text.lower()
     number_matches = re.findall(r'-?\d+\.?\d*\s*[a-z%]*', text)
@@ -65,21 +65,20 @@ def extract_check_items_robust(text):
             items.add(cleaned)
     return items
 
-# ---------------- Compare Rule vs Plan ----------------
-def compare_rule_to_plan_robust(rule_text, plan_text):
-    plan_items = extract_check_items_robust(plan_text)
-    normalized_plan_items = {normalize_token(t) for t in plan_items}
+# ---------------- Compare Rule Lines vs Plan ----------------
+def get_missing_rule_lines(rule_lines, plan_text):
+    plan_tokens = extract_check_items_robust(plan_text)
+    normalized_plan_tokens = {normalize_token(t) for t in plan_tokens}
 
-    rule_lines = [line.strip() for line in rule_text.split("\n") if line.strip()]
-    missing_params = set()
+    missing_lines = []
 
-    for rline in rule_lines:
-        rule_items = extract_check_items_robust(rline)
-        for item in rule_items:
-            if normalize_token(item) not in normalized_plan_items:
-                missing_params.add(item)
+    for line in rule_lines:
+        rule_tokens = extract_check_items_robust(line)
+        # If any token in the line is missing in the plan, mark the whole line as missing
+        if any(normalize_token(tok) not in normalized_plan_tokens for tok in rule_tokens):
+            missing_lines.append(line)
 
-    return missing_params
+    return missing_lines
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -123,18 +122,16 @@ if df is not None:
 
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
-                    rule_text = load_rules_for_requirement(user_input)
+                    rule_lines = load_rules_for_requirement(user_input)
 
-                    if not rule_text:
+                    if not rule_lines:
                         st.warning(f"Rule.docx missing")
                     else:
-                        # Compare rule doc to proposed plan
-                        missing_params = compare_rule_to_plan_robust(rule_text, plan_text)
+                        missing_lines = get_missing_rule_lines(rule_lines, plan_text)
 
-                        # Display only missing parameters as bullets
-                        st.markdown("## Test Coverage Suggestions (Missing Parameters Only)")
-                        if missing_params:
-                            for param in sorted(missing_params):
-                                st.markdown(f"- {param}")
+                        st.markdown("## Test Coverage Suggestions (Missing Rule Lines Only)")
+                        if missing_lines:
+                            for line in missing_lines:
+                                st.markdown(f"- {line}")
                         else:
-                            st.success("All parameters from the rule doc are covered in the proposed plan!")
+                            st.success("All rule lines are covered in the proposed plan!")
