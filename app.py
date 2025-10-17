@@ -53,12 +53,12 @@ def compare_rule_to_plan(rule_text, plan_text):
     if missing_items:
         output = [f"- {item}" for item in missing_items]
     else:
-        st.warning(f"Rule.docx missing")
+        output = ["- All rule items are covered in the proposed plan."]
 
     return output, missing_items
 
 # ---------------- AI Suggestions Placeholder ----------------
-def get_ai_suggestions(missing_items):
+def get_ai_suggestions(plan_text, missing_items):
     # Placeholder: AI not yet configured
     if missing_items:
         return ["- AI suggestions not available. Please configure your API key"]
@@ -104,21 +104,21 @@ if df is not None:
             else:
                 plan_text = uploaded_plan_file.read().decode("utf-8")
 
-                if st.button("Analyze Test Plan"):
-                        with st.spinner("Analyzing test plan..."):
-                        # Load rule from repo automatically
-                        rule_text = load_rules_for_requirement(user_input)
+            if st.button("Analyze Test Plan"):
+                with st.spinner("Analyzing test plan..."):
+                    # Load rule from repo automatically
+                    rule_text = load_rules_for_requirement(user_input)
 
-                            if not rule_text:
-                            st.warning(f"Rule.docx missing")
-                                else:
-                                # --- Rule-based missing items
-                                rule_output, missing_items = compare_rule_to_plan(rule_text, plan_text)
+                    if not rule_text:
+                        st.warning(f"Rule.docx missing")
+                    else:
+                        # --- Rule-based missing items
+                        rule_output, missing_items = compare_rule_to_plan(rule_text, plan_text)
 
-                                # --- AI-based suggestions
-                                ai_output = get_ai_suggestions(plan_text, missing_items)
+                        # --- AI-based suggestions placeholder
+                        ai_output = get_ai_suggestions(plan_text, missing_items)
 
-                                # --- Combined Test Coverage Suggestions
-                                st.markdown("## Test Coverage Suggestions")
-                                for item in rule_output + ai_output:
-                                st.markdown(item)
+                        # --- Combined Test Coverage Suggestions
+                        st.markdown("## Test Coverage Suggestions")
+                        for item in rule_output + ai_output:
+                            st.markdown(item)
