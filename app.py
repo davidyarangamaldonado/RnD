@@ -41,7 +41,6 @@ def load_rules_for_requirement(requirement_id):
 
 # ---------------- Token Normalization ----------------
 def normalize_token(token):
-    """Normalize numeric/unit and alphanumeric engineering parameters."""
     token = token.lower()
     match = re.match(r'(-?\d+\.?\d*)([a-z%]*)', token)
     if match:
@@ -66,21 +65,21 @@ def extract_check_items_robust(text):
             items.add(cleaned)
     return items
 
-# ---------------- Robust Rule Comparison ----------------
+# ---------------- Compare Rule vs Plan ----------------
 def compare_rule_to_plan_robust(rule_text, plan_text):
     plan_items = extract_check_items_robust(plan_text)
     normalized_plan_items = {normalize_token(t) for t in plan_items}
 
     rule_lines = [line.strip() for line in rule_text.split("\n") if line.strip()]
-    results = []
+    missing_params = set()
 
     for rline in rule_lines:
         rule_items = extract_check_items_robust(rline)
-        missing_items = [item for item in rule_items if normalize_token(item) not in normalized_plan_items]
-        status = "covered" if not missing_items else "missing"
-        results.append((rline, status, missing_items))
+        for item in rule_items:
+            if normalize_token(item) not in normalized_plan_items:
+                missing_params.add(item)
 
-    return results
+    return missing_params
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -122,12 +121,6 @@ if df is not None:
                 except UnicodeDecodeError:
                     plan_text = uploaded_plan_file.read().decode("latin1")
 
-            # Display Proposed Test Plan
-            st.markdown("## Your Proposed Plan")
-            plan_lines = [line.strip() for line in plan_text.split("\n") if line.strip()]
-            for line in plan_lines:
-                st.markdown(f"- {line}")
-
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
                     rule_text = load_rules_for_requirement(user_input)
@@ -135,44 +128,13 @@ if df is not None:
                     if not rule_text:
                         st.warning(f"Rule.docx missing")
                     else:
-                        comparison_results = compare_rule_to_plan_robust(rule_text, plan_text)
+                        # Compare rule doc to proposed plan
+                        missing_params = compare_rule_to_plan_robust(rule_text, plan_text)
 
-                        # --- Legend
-                        st.markdown("## Legend")
-                        st.markdown("<span style='color:green'>✅ Covered: Parameter addressed in plan</span>", unsafe_allow_html=True)
-                        st.markdown("<span style='color:red'>❌ Missing: Parameter not addressed in plan</span>", unsafe_allow_html=True)
-
-                        # --- Highlighted rule lines (green/red inline)
-                        st.markdown("## Rule Coverage Highlights")
-                        plan_tokens = extract_check_items_robust(plan_text)
-                        normalized_plan_items = {normalize_token(t) for t in plan_tokens}
-
-                        for item, status, missing_tokens in comparison_results:
-                            tokens = re.findall(r'\b[\w\-\+\.]+\b', item)
-                            highlighted_line = item
-                            for token in tokens:
-                                if normalize_token(token) in normalized_plan_items:
-                                    highlighted_line = re.sub(
-                                        rf'\b{re.escape(token)}\b',
-                                        f"<span style='color:green'>{token}</span>",
-                                        highlighted_line,
-                                        flags=re.IGNORECASE
-                                    )
-                                else:
-                                    highlighted_line = re.sub(
-                                        rf'\b{re.escape(token)}\b',
-                                        f"<span style='color:red'>{token}</span>",
-                                        highlighted_line,
-                                        flags=re.IGNORECASE
-                                    )
-                            st.markdown(f"- {highlighted_line}", unsafe_allow_html=True)
-
-                        # --- Test Coverage Suggestions (only missing items)
+                        # Display only missing parameters as bullets
                         st.markdown("## Test Coverage Suggestions (Missing Parameters Only)")
-                        missing_params = set()
-                        for _, status, missing_tokens in comparison_results:
-                            for token in missing_tokens:
-                                missing_params.add(token)
-
-                        for token in sorted(missing_params):
-                            st.markdown(f"- {token}")
+                        if missing_params:
+                            for param in sorted(missing_params):
+                                st.markdown(f"- {param}")
+                        else:
+                            st.success("All parameters from the rule doc are covered in the proposed plan!")
