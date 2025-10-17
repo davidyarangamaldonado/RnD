@@ -96,7 +96,6 @@ def get_missing_rule_lines(rule_lines, plan_text):
 
 # ---------------- History / Simulated Learning ----------------
 def load_history(requirement_id):
-    """Load all past history files for this requirement."""
     if not os.path.exists(HISTORY_DIR):
         return ""
     history_files = [f for f in os.listdir(HISTORY_DIR) if f.startswith(requirement_id)]
@@ -140,16 +139,15 @@ Do not include items already covered.
 """
 
     try:
-        response = genai.chat.create(
+        response = genai.models.generate(
             model="gemini-1",
-            messages=[{"author": "user", "content": prompt}],
+            prompt=prompt,
             temperature=0.5,
             max_output_tokens=300
         )
-        ai_text = response.last.response
+        ai_text = response.result[0].content[0].text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
 
-        # Save current analysis to history
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
 
         return suggestions
