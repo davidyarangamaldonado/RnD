@@ -18,9 +18,12 @@ os.makedirs(HISTORY_DIR, exist_ok=True)
 # ---------------- Load API Key from Streamlit Secrets ----------------
 try:
     api_key = st.secrets["google"]["api_key"]
+    if not api_key:
+        raise ValueError("Empty API key in secrets.toml")
     genai.api_key = api_key
+    st.write("✅ API key loaded successfully")  # Debug: confirm key is loaded
 except Exception as e:
-    st.error("Google Gemini API key not found in Streamlit secrets. Please add it in .streamlit/secrets.toml")
+    st.error("Google Gemini API key not found or empty. Please add it in .streamlit/secrets.toml")
     st.stop()
 
 # ---------------- Read CSV ----------------
