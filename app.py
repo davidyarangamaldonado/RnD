@@ -2,11 +2,10 @@ import streamlit as st
 import pandas as pd
 from docx import Document
 import os
-import openai
 
 # ---------------- Streamlit Setup ----------------
-st.set_page_config(page_title="DVT Test Planner - Rule + AI", layout="wide")
-st.title("DVT Test Planner with Rule-Based + AI Coverage Analysis")
+st.set_page_config(page_title="DVT Test Planner - Test Coverage", layout="wide")
+st.title("DVT Test Planner - Test Coverage Suggestions")
 
 # ---------------- Repo Config ----------------
 REPO_PATH = "."  # Path to your linked repo
@@ -39,53 +38,32 @@ def load_rules_for_requirement(requirement_id):
         st.warning(f"No rules file found for {requirement_id} at {rule_file}")
         return ""
 
-# ---------------- Rule-Based Analysis ----------------
-def analyze_rule_based(plan_text, taxonomy_rule):
-    plan_lines = [line.strip() for line in plan_text.split("\n") if line.strip()]
-    taxonomy_keywords = [kw.strip() for kw in taxonomy_rule.split(",") if kw.strip()]
+# ---------------- Compare Rule vs Plan ----------------
+def compare_rule_to_plan(rule_text, plan_text):
+    rule_lines = [line.strip() for line in rule_text.split("\n") if line.strip()]
+    plan_lines = [line.strip().lower() for line in plan_text.split("\n") if line.strip()]
 
-    covered = []
-    missing = []
+    missing_items = []
+    for rline in rule_lines:
+        rline_lower = rline.lower()
+        if not any(rline_lower in pline for pline in plan_lines):
+            missing_items.append(rline)
 
-    for kw in taxonomy_keywords:
-        if any(kw.lower() in line.lower() for line in plan_lines):
-            covered.append(kw)
-        else:
-            missing.append(kw)
+    # Format as bullet points
+    if missing_items:
+        output = [f"- {item}" for item in missing_items]
+    else:
+        output = ["- All rule items are covered in the proposed plan."]
 
-    output = "### Rule-Based Analysis:\n"
-    output += f"**Covered Tests:** {', '.join(covered) if covered else 'None'}\n"
-    output += f"**Missing Tests:** {', '.join(missing) if missing else 'None'}\n"
+    return output, missing_items
 
-    return output, missing
-
-# ---------------- AI-Based Suggestions ----------------
-def get_ai_suggestions(plan_text, missing_tests):
-    api_key = st.secrets.get("OPENAI_API_KEY", None)
-    if not api_key:
-        return "_AI suggestions not available. Please configure your API key in secrets.toml_"
-
-    try:
-        openai.api_key = api_key
-        prompt = f"""
-        You are an expert test engineer. A proposed test plan is given below:
-
-        {plan_text}
-
-        The following important tests appear to be missing: {', '.join(missing_tests)}.
-
-        Suggest additional detailed test cases or improvements that would strengthen the coverage.
-        """
-
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "system", "content": "You are a senior test engineer."},
-                      {"role": "user", "content": prompt}],
-            max_tokens=400
-        )
-        return response["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        return f"_AI suggestion failed: {e}_"
+# ---------------- AI Suggestions Placeholder ----------------
+def get_ai_suggestions(missing_items):
+    # Placeholder: AI not yet configured
+    if missing_items:
+        return ["- AI suggestions not available. Please configure your API key in secrets.toml."]
+    else:
+        return []
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -129,21 +107,18 @@ if df is not None:
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
                     # Load rule from repo automatically
-                    taxonomy_rule = load_rules_for_requirement(user_input)
-                    if not taxonomy_rule:
-                        st.warning(f"No rules found for {user_input}. Check that the rule file exists in your repo.")
-                        taxonomy_rule = ""
+                    rule_text = load_rules_for_requirement(user_input)
+                    if not rule_text:
+                        st.warning(f"⚠️ No rules found for {user_input}. Check that the rule file exists in your repo.")
+                        rule_text = ""
 
-                    # --- Rule-Based analysis
-                    rule_output, missing_tests = analyze_rule_based(plan_text, taxonomy_rule)
+                    # --- Rule-based missing items
+                    rule_output, missing_items = compare_rule_to_plan(rule_text, plan_text)
 
-                    # --- AI-based suggestions
-                    ai_output = get_ai_suggestions(plan_text, missing_tests) if missing_tests else "No additional suggestions needed."
+                    # --- AI-based suggestions placeholder
+                    ai_output = get_ai_suggestions(missing_items)
 
-                    # --- Combined output
-                    st.markdown("### Combined Suggestions")
-                    st.markdown(rule_output)
-                    st.markdown("### AI-Based Suggestions")
-                    st.markdown(ai_output)
-else:
-    st.error("Could not load the requirements file from the repo.")
+                    # --- Combined Test Coverage Suggestions
+                    st.markdown("## Test Coverage Suggestions")
+                    for item in rule_output + ai_output:
+                        st.markdown(item)
