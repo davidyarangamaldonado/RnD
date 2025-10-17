@@ -42,9 +42,31 @@ def load_rules_for_requirement(requirement_id):
 # ---------------- Utility ----------------
 def normalize_text(text):
     text = text.lower()
-    text = re.sub(r'[^\w\s\d\-]', '', text)  # Remove punctuation
+    text = re.sub(r'[^\w\s\d\-]', '', text)  # Remove punctuation except dash
     text = re.sub(r'\s+', ' ', text)         # Normalize whitespace
     return text.strip()
+
+# ---------------- Smart Token Normalization ----------------
+def normalize_token(token):
+    """
+    Normalize a token to handle:
+    - Alphanumeric combos like 256-QAM vs 256QAM
+    - Numeric values with units like 25C vs 25 °C
+    """
+    token = token.lower()
+    
+    # Match number + optional unit
+    match = re.match(r'(-?\d+\.?\d*)([a-z%]*)', token)
+    if match:
+        number_part = match.group(1)
+        unit_part = match.group(2)
+        normalized = f"{number_part}{unit_part}"
+        normalized = re.sub(r'[^a-z0-9]', '', normalized)  # remove non-alphanumeric chars
+        return normalized
+    else:
+        # Alphanumeric token (like 256-QAM)
+        token = re.sub(r'[^a-z0-9]', '', token)
+        return token
 
 # ---------------- Robust Smart Comparison ----------------
 def extract_check_items_robust(text):
@@ -79,15 +101,16 @@ def compare_rule_to_plan_robust(rule_text, plan_text):
     - Marks 'covered' only if all items are present in proposed plan.
     - Returns list of tuples: (rule_line, status, missing_items_list)
     """
-    # Normalize entire plan text once
+    # Extract and normalize plan tokens
     plan_items = extract_check_items_robust(plan_text)
+    normalized_plan_items = {normalize_token(t) for t in plan_items}
 
     rule_lines = [line.strip() for line in rule_text.split("\n") if line.strip()]
     results = []
 
     for rline in rule_lines:
         rule_items = extract_check_items_robust(rline)
-        missing_items = [item for item in rule_items if item not in plan_items]
+        missing_items = [item for item in rule_items if normalize_token(item) not in normalized_plan_items]
         status = "covered" if not missing_items else "missing"
         results.append((rline, status, missing_items))
 
@@ -163,16 +186,30 @@ if df is not None:
 
                         # --- Display Test Coverage Suggestions (smart color highlighting)
                         st.markdown("## Test Coverage Suggestions")
+                        plan_tokens = extract_check_items_robust(plan_text)
+                        normalized_plan_items = {normalize_token(t) for t in plan_tokens}
+
                         for item, status, missing_tokens in comparison_results:
-                            if status == "covered":
-                                st.markdown(f"<span style='color:green'>✅ {item}</span>", unsafe_allow_html=True)
-                            else:
-                                # Split rule line into tokens and highlight each individually
-                                highlighted_line = item
-                                for token in missing_tokens:
-                                    # Replace missing token with red-highlighted version
-                                    highlighted_line = re.sub(rf'\b{re.escape(token)}\b', f"<span style='color:red'>{token}</span>", highlighted_line, flags=re.IGNORECASE)
-                                st.markdown(f"❌ {highlighted_line}", unsafe_allow_html=True)
+                            tokens = re.findall(r'\b[\w\-\+\.]+\b', item)
+                            highlighted_line = item
+
+                            for token in tokens:
+                                if normalize_token(token) in normalized_plan_items:
+                                    highlighted_line = re.sub(
+                                        rf'\b{re.escape(token)}\b',
+                                        f"<span style='color:green'>{token}</span>",
+                                        highlighted_line,
+                                        flags=re.IGNORECASE
+                                    )
+                                else:
+                                    highlighted_line = re.sub(
+                                        rf'\b{re.escape(token)}\b',
+                                        f"<span style='color:red'>{token}</span>",
+                                        highlighted_line,
+                                        flags=re.IGNORECASE
+                                    )
+
+                            st.markdown(highlighted_line, unsafe_allow_html=True)
 
                         # --- AI-based suggestions placeholder
                         missing_items = [mi for _, status, mi_list in comparison_results if status == "missing" for mi in mi_list]
