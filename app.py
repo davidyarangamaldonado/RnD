@@ -9,22 +9,30 @@ import google.generativeai as genai
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
 st.title("RnD DVT Test Planner")
 
-# ---------------- Repo / API Config ----------------
+# ---------------- Repo / Paths ----------------
 REPO_PATH = "."  # Path to your linked repo
 REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.csv")
 HISTORY_DIR = os.path.join(REPO_PATH, "history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
-# ---------------- Load API Key from Streamlit Secrets ----------------
-try:
-    api_key = st.secrets["google"]["api_key"]
-    if not api_key:
-        raise ValueError("Empty API key in secrets.toml")
-    genai.api_key = api_key
-    st.write("✅ API key loaded successfully")  # Debug: confirm key is loaded
-except Exception as e:
-    st.error("Google Gemini API key not found or empty. Please add it in .streamlit/secrets.toml")
+# ---------------- Load API Key ----------------
+def load_api_key():
+    # Try Streamlit secrets first
+    api_key = st.secrets.get("google", {}).get("api_key")
+    if api_key:
+        return api_key
+    # Fallback to environment variable
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if api_key:
+        return api_key
+    return None
+
+api_key = load_api_key()
+if not api_key:
+    st.error("Google Gemini API key not found. Please add it in `.streamlit/secrets.toml` or set the environment variable GOOGLE_API_KEY.")
     st.stop()
+genai.api_key = api_key
+st.write("✅ Google Gemini API key loaded successfully")  # Debug: confirm key is loaded
 
 # ---------------- Read CSV ----------------
 def read_requirements_file():
@@ -97,7 +105,7 @@ def get_missing_rule_lines(rule_lines, plan_text):
 
     return missing_lines
 
-# ---------------- History / Simulated Learning ----------------
+# ---------------- History ----------------
 def load_history(requirement_id):
     if not os.path.exists(HISTORY_DIR):
         return ""
@@ -116,7 +124,7 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- AI Suggestions with Gemini Chat ----------------
+# ---------------- AI Suggestions ----------------
 def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return []
@@ -125,9 +133,9 @@ def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
 
     system_prompt = """
 You are an engineering test coverage assistant.
-Your task is to analyze a proposed test plan and provide actionable suggestions for missing coverage.
+Analyze the proposed test plan and provide actionable suggestions for missing coverage.
 Do not include items already covered.
-Be concise and provide suggestions as bullet points.
+Provide concise bullet points.
 """
 
     user_prompt = f"""
@@ -205,17 +213,14 @@ if df is not None:
 
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
-                    # Load rule lines
                     rule_lines = load_rules_for_requirement(user_input)
                     missing_lines = get_missing_rule_lines(rule_lines, plan_text) if rule_lines else []
 
-                    # --- Display Proposed Test Plan
                     st.markdown("## Your Proposed Test Plan")
                     for line in plan_lines:
                         if line.strip():
                             st.markdown(f"- {line.strip()}")
 
-                    # --- Display Rule-Based Missing Lines
                     st.markdown("## Rule-Based Missing Lines")
                     if missing_lines:
                         for line in missing_lines:
@@ -223,7 +228,6 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # --- AI Suggestions
                     ai_suggestions = get_ai_suggestions(plan_text, missing_lines, user_input)
                     if ai_suggestions:
                         st.markdown("## AI Suggestions for Better Test Coverage")
