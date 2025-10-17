@@ -29,10 +29,9 @@ def docx_to_text(file):
     doc = Document(file)
     return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
 
-# ---------------- Load Rules (Graceful Handling) ----------------
+# ---------------- Load Rules ----------------
 def load_rules_for_requirement(requirement_id):
     rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
-    st.write(f"Looking for rule file: {rule_file}")  # Debug info
     if os.path.exists(rule_file):
         try:
             doc = Document(rule_file)
@@ -148,25 +147,23 @@ if df is not None:
 
             plan_text = "\n".join(plan_lines)
 
-            # --- Display Proposed Test Plan
-            st.markdown("## Your Proposed Test Plan")
-            for line in plan_lines:
-                if line.strip():
-                    st.markdown(f"- {line.strip()}")
-
-            # --- Analyze Rule Coverage
+            # --- Analyze Test Plan Button
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
+                    # Load rule lines for analysis (used internally, not displayed)
                     rule_lines = load_rules_for_requirement(user_input)
+                    missing_lines = get_partial_missing_rule_lines(rule_lines, plan_text) if rule_lines else []
 
-                    if not rule_lines:
-                        st.warning("No rule lines available for analysis.")
+                    # --- Display Proposed Test Plan as bullets
+                    st.markdown("## Your Proposed Test Plan")
+                    for line in plan_lines:
+                        if line.strip():
+                            st.markdown(f"- {line.strip()}")
+
+                    # --- Display Test Coverage Suggestions (missing only)
+                    st.markdown("## Test Coverage Suggestions (Partial/Missing Parameters Highlighted)")
+                    if missing_lines:
+                        for line in missing_lines:
+                            st.markdown(f"- {line}", unsafe_allow_html=True)
                     else:
-                        missing_lines = get_partial_missing_rule_lines(rule_lines, plan_text)
-
-                        st.markdown("## Test Coverage Suggestions (Partial/Missing Parameters Highlighted)")
-                        if missing_lines:
-                            for line in missing_lines:
-                                st.markdown(f"- {line}", unsafe_allow_html=True)
-                        else:
-                            st.success("All rule lines are fully covered in the proposed plan!")
+                        st.success("All rule lines are fully covered in the proposed plan!")
