@@ -52,8 +52,8 @@ def compare_rule_to_plan(rule_text, plan_text):
     # Format as bullet points
     if missing_items:
         output = [f"- {item}" for item in missing_items]
-        else:
-            st.warning(f"Rule.docx missing")
+    else:
+        st.warning(f"Rule.docx missing")
 
     return output, missing_items
 
