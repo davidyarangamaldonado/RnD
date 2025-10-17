@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from docx import Document
 import os
+import re
+from difflib import SequenceMatcher
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
@@ -38,28 +40,57 @@ def load_rules_for_requirement(requirement_id):
         st.warning(f"No rules file found for {requirement_id}")
         return ""
 
-# ---------------- Compare Rule vs Plan ----------------
-def compare_rule_to_plan(rule_text, plan_text):
+# ---------------- Intelligent Comparison with Color Coding ----------------
+def similar(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+def normalize_text(text):
+    text = text.lower()
+    text = re.sub(r'[^\w\s\d]', '', text)  # Remove punctuation
+    text = re.sub(r'\s+', ' ', text)       # Normalize whitespace
+    return text.strip()
+
+def compare_rule_to_plan_colored(rule_text, plan_text, threshold=0.7, partial_threshold=0.5):
     rule_lines = [line.strip() for line in rule_text.split("\n") if line.strip()]
-    plan_lines = [line.strip().lower() for line in plan_text.split("\n") if line.strip()]
+    plan_lines = [line.strip() for line in plan_text.split("\n") if line.strip()]
 
-    missing_items = []
+    results = []
+
     for rline in rule_lines:
-        rline_lower = rline.lower()
-        if not any(rline_lower in pline for pline in plan_lines):
-            missing_items.append(rline)
+        rline_norm = normalize_text(rline)
+        numbers_in_rline = re.findall(r'\d+\.?\d*', rline_norm)
+        matched = False
+        partial_matched = False
 
-    # Format as bullet points
-    if missing_items:
-        output = [f"- {item}" for item in missing_items]
-    else:
-        output = ["- All rule items are covered in the proposed plan."]
+        for pline in plan_lines:
+            pline_norm = normalize_text(pline)
 
-    return output, missing_items
+            sim_score = similar(rline_norm, pline_norm)
+
+            if sim_score >= threshold:
+                matched = True
+                break
+            elif sim_score >= partial_threshold:
+                partial_matched = True
+
+            # Numeric match
+            if numbers_in_rline:
+                numbers_in_pline = re.findall(r'\d+\.?\d*', pline_norm)
+                if all(num in numbers_in_pline for num in numbers_in_rline):
+                    matched = True
+                    break
+
+        if matched:
+            results.append((rline, "covered"))   # Green
+        elif partial_matched:
+            results.append((rline, "partial"))   # Yellow
+        else:
+            results.append((rline, "missing"))   # Red
+
+    return results
 
 # ---------------- AI Suggestions Placeholder ----------------
 def get_ai_suggestions(plan_text, missing_items):
-    # Placeholder: AI not yet configured
     if missing_items:
         return ["- AI suggestions not available. Please configure your API key"]
     else:
@@ -80,7 +111,6 @@ if df is not None:
 
     id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
 
-    # --- Requirement ID input
     user_input = st.text_input("Enter the Requirement ID (e.g. DS-1):").strip().upper()
     valid_id = False
 
@@ -92,7 +122,6 @@ if df is not None:
             st.error("No match found for that Requirement ID.")
 
     if valid_id:
-        # --- Test Plan uploader
         uploaded_plan_file = st.file_uploader(
             "Upload Proposed Test Plan (.docx or .txt)", 
             type=["docx", "txt"]
@@ -104,25 +133,40 @@ if df is not None:
             else:
                 plan_text = uploaded_plan_file.read().decode("utf-8")
 
-            # --- Display Proposed Test Plan
+            # --- Display Proposed Test Plan nicely
             st.markdown("## Your Proposed Plan")
-            st.text(plan_text)
+            plan_lines = [line.strip() for line in plan_text.split("\n") if line.strip()]
+            for line in plan_lines:
+                st.markdown(f"- {line}")
 
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
-                    # Load rule from repo automatically
                     rule_text = load_rules_for_requirement(user_input)
 
                     if not rule_text:
                         st.warning(f"Rule.docx missing")
                     else:
-                        # --- Rule-based missing items
-                        rule_output, missing_items = compare_rule_to_plan(rule_text, plan_text)
+                        # --- Compare with color coding
+                        comparison_results = compare_rule_to_plan_colored(rule_text, plan_text)
+
+                        # --- Display Legend
+                        st.markdown("## Legend")
+                        st.markdown("<span style='color:green'>✅ Covered: Rule item is fully addressed in the proposed plan</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:orange'>⚠️ Partial: Rule item is partially covered (fuzzy match)</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:red'>❌ Missing: Rule item is not addressed in the proposed plan</span>", unsafe_allow_html=True)
+
+                        # --- Display Test Coverage Suggestions
+                        st.markdown("## Test Coverage Suggestions")
+                        for item, status in comparison_results:
+                            if status == "covered":
+                                st.markdown(f"<span style='color:green'>✅ {item}</span>", unsafe_allow_html=True)
+                            elif status == "partial":
+                                st.markdown(f"<span style='color:orange'>⚠️ {item}</span>", unsafe_allow_html=True)
+                            else:
+                                st.markdown(f"<span style='color:red'>❌ {item}</span>", unsafe_allow_html=True)
 
                         # --- AI-based suggestions placeholder
+                        missing_items = [item for item, status in comparison_results if status == "missing"]
                         ai_output = get_ai_suggestions(plan_text, missing_items)
-
-                        # --- Combined Test Coverage Suggestions
-                        st.markdown("## Test Coverage Suggestions")
-                        for item in rule_output + ai_output:
-                            st.markdown(item)
+                        for suggestion in ai_output:
+                            st.markdown(suggestion)
