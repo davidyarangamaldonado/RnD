@@ -27,17 +27,7 @@ def read_requirements_file():
 # ---------------- Word Parsing ----------------
 def docx_to_text(file):
     doc = Document(file)
-    return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
-
-# ---------------- Load Rules ----------------
-def load_rules_for_requirement(requirement_id):
-    rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
-    if os.path.exists(rule_file):
-        doc = Document(rule_file)
-        return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-    else:
-        st.warning(f"No rules file found for {requirement_id}")
-        return []
+    return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
 
 # ---------------- Token Normalization ----------------
 def normalize_token(token):
@@ -65,18 +55,38 @@ def extract_check_items_robust(text):
             items.add(cleaned)
     return items
 
-# ---------------- Compare Rule Lines vs Plan ----------------
-def get_missing_rule_lines(rule_lines, plan_text):
+# ---------------- Smart Comparison ----------------
+def get_partial_missing_rule_lines(rule_lines, plan_text):
     plan_tokens = extract_check_items_robust(plan_text)
     normalized_plan_tokens = {normalize_token(t) for t in plan_tokens}
 
     missing_lines = []
 
     for line in rule_lines:
-        rule_tokens = extract_check_items_robust(line)
-        # If any token in the line is missing in the plan, mark the whole line as missing
-        if any(normalize_token(tok) not in normalized_plan_tokens for tok in rule_tokens):
-            missing_lines.append(line)
+        rule_tokens = re.findall(r'\b[\w\-\+\.]+\b', line)
+        missing_tokens = []
+        for token in rule_tokens:
+            if normalize_token(token) not in normalized_plan_tokens:
+                missing_tokens.append(token)
+        if missing_tokens:
+            # Highlight missing tokens in red, covered tokens in green
+            highlighted_line = line
+            for token in rule_tokens:
+                if token in missing_tokens:
+                    highlighted_line = re.sub(
+                        rf'\b{re.escape(token)}\b',
+                        f"<span style='color:red'>{token}</span>",
+                        highlighted_line,
+                        flags=re.IGNORECASE
+                    )
+                else:
+                    highlighted_line = re.sub(
+                        rf'\b{re.escape(token)}\b',
+                        f"<span style='color:green'>{token}</span>",
+                        highlighted_line,
+                        flags=re.IGNORECASE
+                    )
+            missing_lines.append(highlighted_line)
 
     return missing_lines
 
@@ -112,14 +122,24 @@ if df is not None:
         )
 
         if uploaded_plan_file:
+            # Read proposed plan
             if uploaded_plan_file.name.endswith(".docx"):
-                plan_text = docx_to_text(uploaded_plan_file)
+                plan_lines = docx_to_text(uploaded_plan_file)
             else:
                 try:
-                    plan_text = uploaded_plan_file.read().decode("utf-8")
+                    plan_lines = uploaded_plan_file.read().decode("utf-8").splitlines()
                 except UnicodeDecodeError:
-                    plan_text = uploaded_plan_file.read().decode("latin1")
+                    plan_lines = uploaded_plan_file.read().decode("latin1").splitlines()
 
+            plan_text = "\n".join(plan_lines)
+
+            # --- Display Proposed Test Plan
+            st.markdown("## Your Proposed Test Plan")
+            for line in plan_lines:
+                if line.strip():
+                    st.markdown(f"- {line.strip()}")
+
+            # --- Analyze Rule Coverage
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
                     rule_lines = load_rules_for_requirement(user_input)
@@ -127,11 +147,11 @@ if df is not None:
                     if not rule_lines:
                         st.warning(f"Rule.docx missing")
                     else:
-                        missing_lines = get_missing_rule_lines(rule_lines, plan_text)
+                        missing_lines = get_partial_missing_rule_lines(rule_lines, plan_text)
 
-                        st.markdown("## Test Coverage Suggestions")
+                        st.markdown("## Test Coverage Suggestions (Partial/Missing Parameters Highlighted)")
                         if missing_lines:
                             for line in missing_lines:
-                                st.markdown(f"- {line}")
+                                st.markdown(f"- {line}", unsafe_allow_html=True)
                         else:
-                            st.success("All rule lines are covered in the proposed plan!")
+                            st.success("All rule lines are fully covered in the proposed plan!")
