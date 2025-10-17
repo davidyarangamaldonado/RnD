@@ -151,19 +151,19 @@ if df is not None:
 
                         # --- Display Legend
                         st.markdown("## Legend")
-                        st.markdown("<span style='color:green'>✅ Covered: Rule item is fully addressed in the proposed plan</span>", unsafe_allow_html=True)
-                        st.markdown("<span style='color:orange'>⚠️ Partial: Rule item is partially covered (fuzzy match)</span>", unsafe_allow_html=True)
-                        st.markdown("<span style='color:red'>❌ Missing: Rule item is not addressed in the proposed plan</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:green'> Covered </span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:yellow'>l: Partially covered (fuzzy match)</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:red'> Missing </span>", unsafe_allow_html=True)
 
                         # --- Display Test Coverage Suggestions
                         st.markdown("## Test Coverage Suggestions")
                         for item, status in comparison_results:
                             if status == "covered":
-                                st.markdown(f"<span style='color:green'>✅ {item}</span>", unsafe_allow_html=True)
+                                st.markdown(f"<span style='color:green'> {item}</span>", unsafe_allow_html=True)
                             elif status == "partial":
-                                st.markdown(f"<span style='color:orange'>⚠️ {item}</span>", unsafe_allow_html=True)
+                                st.markdown(f"<span style='color:yellow'>{item}</span>", unsafe_allow_html=True)
                             else:
-                                st.markdown(f"<span style='color:red'>❌ {item}</span>", unsafe_allow_html=True)
+                                st.markdown(f"<span style='color:red'> {item}</span>", unsafe_allow_html=True)
 
                         # --- AI-based suggestions placeholder
                         missing_items = [item for item, status in comparison_results if status == "missing"]
