@@ -51,41 +51,54 @@ def normalize_text(text):
     return text.strip()
 
 def compare_rule_to_plan_colored(rule_text, plan_text, threshold=0.7, partial_threshold=0.5):
+    """
+    Compare rule text with proposed plan intelligently.
+    - Splits rule lines into sub-items (numbers, key phrases).
+    - Checks if each sub-item exists anywhere in the proposed plan.
+    - Returns colored status per rule line: covered, partial, missing.
+    """
+    # Normalize proposed plan text as a single string
+    plan_norm = normalize_text(plan_text)
+    
     rule_lines = [line.strip() for line in rule_text.split("\n") if line.strip()]
-    plan_lines = [line.strip() for line in plan_text.split("\n") if line.strip()]
-
     results = []
 
     for rline in rule_lines:
         rline_norm = normalize_text(rline)
+
+        # Extract numbers/phrases from the rule line
         numbers_in_rline = re.findall(r'\d+\.?\d*', rline_norm)
-        matched = False
-        partial_matched = False
+        words_in_rline = [w for w in rline_norm.split() if not w.isdigit()]
 
-        for pline in plan_lines:
-            pline_norm = normalize_text(pline)
+        matched_count = 0
+        partial = False
 
-            sim_score = similar(rline_norm, pline_norm)
+        # Check numbers
+        for num in numbers_in_rline:
+            if num in plan_norm:
+                matched_count += 1
 
-            if sim_score >= threshold:
-                matched = True
-                break
-            elif sim_score >= partial_threshold:
-                partial_matched = True
+        # Check words/phrases with fuzzy matching
+        for word in words_in_rline:
+            # Exact match first
+            if word in plan_norm:
+                matched_count += 1
+            else:
+                # Partial/fuzzy match
+                words_in_plan = plan_norm.split()
+                if any(similar(word, w) >= partial_threshold for w in words_in_plan):
+                    partial = True
 
-            # Numeric match
-            if numbers_in_rline:
-                numbers_in_pline = re.findall(r'\d+\.?\d*', pline_norm)
-                if all(num in numbers_in_pline for num in numbers_in_rline):
-                    matched = True
-                    break
-
-        if matched:
-            results.append((rline, "covered"))   # Green
-        elif partial_matched:
-            results.append((rline, "partial"))   # Yellow
+        # Decide status
+        total_items = len(numbers_in_rline) + len(words_in_rline)
+        if matched_count == total_items:
+            status = "covered"
+        elif matched_count > 0 or partial:
+            status = "partial"
         else:
-            results.append((rline, "missing"))   # Red
+            status = "missing"
+
+        results.append((rline, status))
 
     return results
 
