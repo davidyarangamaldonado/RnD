@@ -43,7 +43,6 @@ def load_rules_for_requirement(requirement_id):
 def normalize_token(token):
     """Normalize numeric/unit and alphanumeric engineering parameters."""
     token = token.lower()
-    # Separate number + optional unit
     match = re.match(r'(-?\d+\.?\d*)([a-z%]*)', token)
     if match:
         number_part = match.group(1)
@@ -57,15 +56,9 @@ def normalize_token(token):
 
 # ---------------- Extract Engineering/Test Parameters ----------------
 def extract_check_items_robust(text):
-    """
-    Extract numeric values, units, modulation orders, and alphanumeric test parameters.
-    """
     text = text.lower()
-    # Numbers with optional units
     number_matches = re.findall(r'-?\d+\.?\d*\s*[a-z%]*', text)
-    # Alphanumeric combos (modulation, OFDM, etc.)
     alnum_matches = re.findall(r'\b[\w\-]{2,}\b', text)
-    
     items = set()
     for n in number_matches + alnum_matches:
         cleaned = re.sub(r'[^a-z0-9]', '', n)
@@ -88,14 +81,6 @@ def compare_rule_to_plan_robust(rule_text, plan_text):
         results.append((rline, status, missing_items))
 
     return results
-
-# ---------------- AI Suggestions Placeholder ----------------
-def get_ai_suggestions(plan_text, missing_items):
-    """Generate user-friendly actionable suggestions."""
-    suggestions = []
-    for mi in missing_items:
-        suggestions.append(f"Add test for parameter: {mi}")
-    return suggestions
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -150,7 +135,6 @@ if df is not None:
                     if not rule_text:
                         st.warning(f"Rule.docx missing")
                     else:
-                        # --- Compare rules to plan
                         comparison_results = compare_rule_to_plan_robust(rule_text, plan_text)
 
                         # --- Legend
@@ -158,14 +142,11 @@ if df is not None:
                         st.markdown("<span style='color:green'>✅ Covered: Parameter addressed in plan</span>", unsafe_allow_html=True)
                         st.markdown("<span style='color:red'>❌ Missing: Parameter not addressed in plan</span>", unsafe_allow_html=True)
 
-                        # --- Test Coverage Suggestions
-                        st.markdown("## Test Coverage Suggestions")
-
-                        # Precompute normalized plan items
+                        # --- Highlighted rule lines (green/red inline)
+                        st.markdown("## Rule Coverage Highlights")
                         plan_tokens = extract_check_items_robust(plan_text)
                         normalized_plan_items = {normalize_token(t) for t in plan_tokens}
 
-                        # Rule-based suggestions
                         for item, status, missing_tokens in comparison_results:
                             tokens = re.findall(r'\b[\w\-\+\.]+\b', item)
                             highlighted_line = item
@@ -186,8 +167,12 @@ if df is not None:
                                     )
                             st.markdown(f"- {highlighted_line}", unsafe_allow_html=True)
 
-                        # AI-based suggestions
-                        missing_items = [mi for _, status, mi_list in comparison_results if status == "missing" for mi in mi_list]
-                        ai_output = get_ai_suggestions(plan_text, missing_items)
-                        for suggestion in ai_output:
-                            st.markdown(f"- {suggestion}")
+                        # --- Test Coverage Suggestions (only missing items)
+                        st.markdown("## Test Coverage Suggestions (Missing Parameters Only)")
+                        missing_params = set()
+                        for _, status, missing_tokens in comparison_results:
+                            for token in missing_tokens:
+                                missing_params.add(token)
+
+                        for token in sorted(missing_params):
+                            st.markdown(f"- {token}")
