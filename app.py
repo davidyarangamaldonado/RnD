@@ -69,8 +69,8 @@ def extract_check_items_robust(text):
             items.add(cleaned)
     return items
 
-# ---------------- Smart Comparison ----------------
-def get_partial_missing_rule_lines(rule_lines, plan_text):
+# ---------------- Compare Rule Lines vs Plan ----------------
+def get_missing_rule_lines(rule_lines, plan_text):
     plan_tokens = extract_check_items_robust(plan_text)
     normalized_plan_tokens = {normalize_token(t) for t in plan_tokens}
 
@@ -78,29 +78,8 @@ def get_partial_missing_rule_lines(rule_lines, plan_text):
 
     for line in rule_lines:
         rule_tokens = re.findall(r'\b[\w\-\+\.]+\b', line)
-        missing_tokens = []
-        for token in rule_tokens:
-            if normalize_token(token) not in normalized_plan_tokens:
-                missing_tokens.append(token)
-        if missing_tokens:
-            # Highlight missing tokens in red, covered tokens in green
-            highlighted_line = line
-            for token in rule_tokens:
-                if token in missing_tokens:
-                    highlighted_line = re.sub(
-                        rf'\b{re.escape(token)}\b',
-                        f"<span style='color:red'>{token}</span>",
-                        highlighted_line,
-                        flags=re.IGNORECASE
-                    )
-                else:
-                    highlighted_line = re.sub(
-                        rf'\b{re.escape(token)}\b',
-                        f"<span style='color:green'>{token}</span>",
-                        highlighted_line,
-                        flags=re.IGNORECASE
-                    )
-            missing_lines.append(highlighted_line)
+        if any(normalize_token(token) not in normalized_plan_tokens for token in rule_tokens):
+            missing_lines.append(line)  # Append full line without highlights
 
     return missing_lines
 
@@ -150,9 +129,9 @@ if df is not None:
             # --- Analyze Test Plan Button
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
-                    # Load rule lines for analysis (used internally, not displayed)
+                    # Load rule lines for analysis
                     rule_lines = load_rules_for_requirement(user_input)
-                    missing_lines = get_partial_missing_rule_lines(rule_lines, plan_text) if rule_lines else []
+                    missing_lines = get_missing_rule_lines(rule_lines, plan_text) if rule_lines else []
 
                     # --- Display Proposed Test Plan as bullets
                     st.markdown("## Your Proposed Test Plan")
@@ -160,10 +139,10 @@ if df is not None:
                         if line.strip():
                             st.markdown(f"- {line.strip()}")
 
-                    # --- Display Test Coverage Suggestions (missing only)
-                    st.markdown("## Test Coverage Suggestions (Partial/Missing Parameters Highlighted)")
+                    # --- Display Test Coverage Suggestions (Missing Only, Plain)
+                    st.markdown("## Test Coverage Suggestions (Missing Only)")
                     if missing_lines:
                         for line in missing_lines:
-                            st.markdown(f"- {line}", unsafe_allow_html=True)
+                            st.markdown(f"- {line}")
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
