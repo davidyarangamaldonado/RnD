@@ -214,7 +214,7 @@ if df is not None:
                         if line.strip():
                             st.markdown(f"- {line.strip()}")
 
-                    st.markdown("## Rule-Based Missing Lines")
+                    st.markdown("## Based on past Test Cases"
                     if missing_lines:
                         for line in missing_lines:
                             st.markdown(f"- {line}")
@@ -223,6 +223,6 @@ if df is not None:
 
                     ai_suggestions = get_ai_suggestions(plan_text, missing_lines, user_input)
                     if ai_suggestions:
-                        st.markdown("## AI Suggestions for Better Test Coverage")
+                        st.markdown("## AI Suggestions")
                         for sug in ai_suggestions:
                             st.markdown(f"- {sug}")
