@@ -104,6 +104,10 @@ if df is not None:
             else:
                 plan_text = uploaded_plan_file.read().decode("utf-8")
 
+            # --- Display Proposed Test Plan
+            st.markdown("## Your Proposed Plan")
+            st.text(plan_text)
+
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
                     # Load rule from repo automatically
