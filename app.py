@@ -3,16 +3,35 @@ import pandas as pd
 from docx import Document
 import os
 import re
+import google.generativeai as genai
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
 st.title("RnD DVT Test Planner")
 
-# ---------------- Repo Config ----------------
+# ---------------- Repo / API Config ----------------
 REPO_PATH = "."  # Path to your linked repo
 REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.csv")
+API_KEY_FILE = os.path.join(REPO_PATH, "API_KEY")
+HISTORY_DIR = os.path.join(REPO_PATH, "history")
+os.makedirs(HISTORY_DIR, exist_ok=True)
 
-# ---------------- Read Requirements CSV ----------------
+# ---------------- Load API Key ----------------
+def load_api_key():
+    if not os.path.exists(API_KEY_FILE):
+        st.error(f"API key file not found at {API_KEY_FILE}")
+        return None
+    with open(API_KEY_FILE, "r") as f:
+        key = f.read().strip()
+    return key
+
+api_key = load_api_key()
+if api_key:
+    genai.api_key = api_key
+else:
+    st.stop()
+
+# ---------------- Read CSV ----------------
 def read_requirements_file():
     if not os.path.exists(REQUIREMENTS_FILE):
         st.error(f"Requirements file not found at {REQUIREMENTS_FILE}")
@@ -69,7 +88,7 @@ def extract_check_items_robust(text):
             items.add(cleaned)
     return items
 
-# ---------------- Compare Rule Lines vs Plan ----------------
+# ---------------- Compare Rule Lines ----------------
 def get_missing_rule_lines(rule_lines, plan_text):
     plan_tokens = extract_check_items_robust(plan_text)
     normalized_plan_tokens = {normalize_token(t) for t in plan_tokens}
@@ -79,9 +98,71 @@ def get_missing_rule_lines(rule_lines, plan_text):
     for line in rule_lines:
         rule_tokens = re.findall(r'\b[\w\-\+\.]+\b', line)
         if any(normalize_token(token) not in normalized_plan_tokens for token in rule_tokens):
-            missing_lines.append(line)  # Append full line without highlights
+            missing_lines.append(line)
 
     return missing_lines
+
+# ---------------- History / Simulated Learning ----------------
+def load_history(requirement_id):
+    """Load all past history files for this requirement."""
+    if not os.path.exists(HISTORY_DIR):
+        return ""
+    history_files = [f for f in os.listdir(HISTORY_DIR) if f.startswith(requirement_id)]
+    history_texts = []
+    for file in history_files:
+        with open(os.path.join(HISTORY_DIR, file), "r") as f:
+            history_texts.append(f.read())
+    return "\n".join(history_texts)
+
+def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
+    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+    history_file = os.path.join(HISTORY_DIR, f"{requirement_id}_{timestamp}.txt")
+    with open(history_file, "w") as f:
+        f.write("Rule Lines:\n" + "\n".join(missing_rule_lines) + "\n\n")
+        f.write("Proposed Plan:\n" + plan_text + "\n\n")
+        f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
+
+# ---------------- AI Suggestions ----------------
+def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
+    if not missing_rule_lines:
+        return []
+
+    history_context = load_history(requirement_id)
+
+    prompt = f"""
+You are an engineering test coverage assistant.
+Proposed test plan:
+{plan_text}
+
+Missing rule lines:
+{chr(10).join(missing_rule_lines)}
+
+History of previous analyses for this requirement:
+{history_context}
+
+Provide actionable suggestions for better test coverage in concise bullet points.
+For example:
+- Add a test at 65C
+- Test with 128-QAM modulation
+Do not include items already covered.
+"""
+
+    try:
+        response = genai.chat.create(
+            model="gemini-1",
+            messages=[{"author": "user", "content": prompt}],
+            temperature=0.5,
+            max_output_tokens=300
+        )
+        ai_text = response.last.response
+        suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
+
+        # Save current analysis to history
+        save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
+
+        return suggestions
+    except Exception as e:
+        return [f"AI suggestion failed: {e}"]
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -115,7 +196,6 @@ if df is not None:
         )
 
         if uploaded_plan_file:
-            # Read proposed plan
             if uploaded_plan_file.name.endswith(".docx"):
                 plan_lines = docx_to_text(uploaded_plan_file)
             else:
@@ -126,23 +206,29 @@ if df is not None:
 
             plan_text = "\n".join(plan_lines)
 
-            # --- Analyze Test Plan Button
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
-                    # Load rule lines for analysis
+                    # Load rule lines
                     rule_lines = load_rules_for_requirement(user_input)
                     missing_lines = get_missing_rule_lines(rule_lines, plan_text) if rule_lines else []
 
-                    # --- Display Proposed Test Plan as bullets
+                    # --- Display Proposed Test Plan
                     st.markdown("## Your Proposed Test Plan")
                     for line in plan_lines:
                         if line.strip():
                             st.markdown(f"- {line.strip()}")
 
-                    # --- Display Test Coverage Suggestions 
-                    st.markdown("## Test Coverage Suggestions")
+                    # --- Display Rule-Based Missing Lines
+                    st.markdown("## Rule-Based Missing Lines")
                     if missing_lines:
                         for line in missing_lines:
                             st.markdown(f"- {line}")
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
+
+                    # --- AI Suggestions
+                    ai_suggestions = get_ai_suggestions(plan_text, missing_lines, user_input)
+                    if ai_suggestions:
+                        st.markdown("## AI Suggestions for Better Test Coverage")
+                        for sug in ai_suggestions:
+                            st.markdown(f"- {sug}")
