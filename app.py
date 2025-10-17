@@ -40,68 +40,46 @@ def load_rules_for_requirement(requirement_id):
         return ""
 
 # ---------------- Utility ----------------
-def normalize_text(text):
-    text = text.lower()
-    text = re.sub(r'[^\w\s\d\-]', '', text)  # Remove punctuation except dash
-    text = re.sub(r'\s+', ' ', text)         # Normalize whitespace
-    return text.strip()
-
-# ---------------- Smart Token Normalization ----------------
 def normalize_token(token):
     """
     Normalize a token to handle:
-    - Alphanumeric combos like 256-QAM vs 256QAM
+    - Modulation formats like 256-QAM vs 256QAM
     - Numeric values with units like 25C vs 25 °C
     """
     token = token.lower()
     
-    # Match number + optional unit
+    # Separate number + optional unit
     match = re.match(r'(-?\d+\.?\d*)([a-z%]*)', token)
     if match:
         number_part = match.group(1)
         unit_part = match.group(2)
         normalized = f"{number_part}{unit_part}"
-        normalized = re.sub(r'[^a-z0-9]', '', normalized)  # remove non-alphanumeric chars
+        normalized = re.sub(r'[^a-z0-9]', '', normalized)
         return normalized
     else:
-        # Alphanumeric token (like 256-QAM)
         token = re.sub(r'[^a-z0-9]', '', token)
         return token
 
-# ---------------- Robust Smart Comparison ----------------
+# ---------------- Extract Engineering/Test Parameters ----------------
 def extract_check_items_robust(text):
     """
-    Extracts:
-    - Numbers with optional units (e.g., 25C, -30C, 5GHz)
-    - Alphanumeric items (e.g., 256-QAM)
-    - Meaningful phrases (words longer than 2 letters)
-    Returns a set of normalized items.
+    Extracts numeric values, units, modulation orders, and alphanumeric test parameters.
     """
     text = text.lower()
-    
-    # Find numbers with optional units, signed numbers
-    number_matches = re.findall(r'-?\d+\.?\d*\w*', text)
-    
-    # Find alphanumeric combos (like 256-QAM)
+    # Numbers with optional units
+    number_matches = re.findall(r'-?\d+\.?\d*\s*[a-z%]*', text)
+    # Alphanumeric combos (modulation, OFDM, etc.)
     alnum_matches = re.findall(r'\b[\w\-]{2,}\b', text)
     
-    # Combine and normalize
     items = set()
     for n in number_matches + alnum_matches:
-        cleaned = re.sub(r'[^\w\d\-]', '', n)
+        cleaned = re.sub(r'[^a-z0-9]', '', n)
         if cleaned:
             items.add(cleaned)
     return items
 
-
+# ---------------- Robust Rule Comparison ----------------
 def compare_rule_to_plan_robust(rule_text, plan_text):
-    """
-    Granular comparison:
-    - Splits each rule line into multiple check items.
-    - Marks 'covered' only if all items are present in proposed plan.
-    - Returns list of tuples: (rule_line, status, missing_items_list)
-    """
-    # Extract and normalize plan tokens
     plan_items = extract_check_items_robust(plan_text)
     normalized_plan_items = {normalize_token(t) for t in plan_items}
 
@@ -119,7 +97,8 @@ def compare_rule_to_plan_robust(rule_text, plan_text):
 # ---------------- AI Suggestions Placeholder ----------------
 def get_ai_suggestions(plan_text, missing_items):
     if missing_items:
-        return ["- AI suggestions not available. Please configure your API key"]
+        # Return each missing item as an actionable bullet point
+        return [f"Missing parameter: {mi}" for mi in missing_items]
     else:
         return []
 
@@ -163,7 +142,7 @@ if df is not None:
                 except UnicodeDecodeError:
                     plan_text = uploaded_plan_file.read().decode("latin1")
 
-            # --- Display Proposed Test Plan nicely
+            # Display Proposed Test Plan
             st.markdown("## Your Proposed Plan")
             plan_lines = [line.strip() for line in plan_text.split("\n") if line.strip()]
             for line in plan_lines:
@@ -176,23 +155,23 @@ if df is not None:
                     if not rule_text:
                         st.warning(f"Rule.docx missing")
                     else:
-                        # --- Robust smart comparison
+                        # --- Compare rules to plan
                         comparison_results = compare_rule_to_plan_robust(rule_text, plan_text)
 
-                        # --- Display Legend
+                        # --- Legend
                         st.markdown("## Legend")
-                        st.markdown("<span style='color:green'>✅ Covered: Rule item is fully addressed in the proposed plan</span>", unsafe_allow_html=True)
-                        st.markdown("<span style='color:red'>❌ Missing: Rule item is not addressed in the proposed plan</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:green'>✅ Covered: Parameter is addressed in the proposed plan</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:red'>❌ Missing: Parameter is not addressed in the proposed plan</span>", unsafe_allow_html=True)
 
-                        # --- Display Test Coverage Suggestions (smart color highlighting)
+                        # --- Test Coverage Suggestions (bullets)
                         st.markdown("## Test Coverage Suggestions")
                         plan_tokens = extract_check_items_robust(plan_text)
                         normalized_plan_items = {normalize_token(t) for t in plan_tokens}
 
+                        # Rule-based suggestions
                         for item, status, missing_tokens in comparison_results:
                             tokens = re.findall(r'\b[\w\-\+\.]+\b', item)
                             highlighted_line = item
-
                             for token in tokens:
                                 if normalize_token(token) in normalized_plan_items:
                                     highlighted_line = re.sub(
@@ -208,11 +187,10 @@ if df is not None:
                                         highlighted_line,
                                         flags=re.IGNORECASE
                                     )
+                            st.markdown(f"- {highlighted_line}", unsafe_allow_html=True)
 
-                            st.markdown(highlighted_line, unsafe_allow_html=True)
-
-                        # --- AI-based suggestions placeholder
+                        # AI-based suggestions
                         missing_items = [mi for _, status, mi_list in comparison_results if status == "missing" for mi in mi_list]
                         ai_output = get_ai_suggestions(plan_text, missing_items)
                         for suggestion in ai_output:
-                            st.markdown(suggestion)
+                            st.markdown(f"- {suggestion}")
