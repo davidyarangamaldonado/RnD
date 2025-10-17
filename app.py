@@ -151,14 +151,22 @@ History of previous analyses for this requirement:
 """
 
     try:
-        response = client.chats.create(model="gemini-1.5-flash")
-        response.send_message(user_prompt)
-        ai_text = response.get_response().text
+        # Use a valid Gemini model and chat method
+        response = client.chat(
+            model="gemini-1.5",  # replace with a valid model from list_models() if needed
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+
+        ai_text = response.last["content"]
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
 
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
 
         return suggestions
+
     except Exception as e:
         return [f"AI suggestion failed: {e}"]
 
