@@ -129,7 +129,7 @@ if df is not None:
                     else:
                         missing_lines = get_missing_rule_lines(rule_lines, plan_text)
 
-                        st.markdown("## Test Coverage Suggestions (Missing Rule Lines Only)")
+                        st.markdown("## Test Coverage Suggestions")
                         if missing_lines:
                             for line in missing_lines:
                                 st.markdown(f"- {line}")
