@@ -152,7 +152,7 @@ if df is not None:
                         # --- Display Legend
                         st.markdown("## Legend")
                         st.markdown("<span style='color:green'> Covered </span>", unsafe_allow_html=True)
-                        st.markdown("<span style='color:yellow'>l: Partially covered (fuzzy match)</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:orange'> Partially covered (fuzzy match)</span>", unsafe_allow_html=True)
                         st.markdown("<span style='color:red'> Missing </span>", unsafe_allow_html=True)
 
                         # --- Display Test Coverage Suggestions
@@ -161,7 +161,7 @@ if df is not None:
                             if status == "covered":
                                 st.markdown(f"<span style='color:green'> {item}</span>", unsafe_allow_html=True)
                             elif status == "partial":
-                                st.markdown(f"<span style='color:yellow'>{item}</span>", unsafe_allow_html=True)
+                                st.markdown(f"<span style='color:orange'> {item}</span>", unsafe_allow_html=True)
                             else:
                                 st.markdown(f"<span style='color:red'> {item}</span>", unsafe_allow_html=True)
 
