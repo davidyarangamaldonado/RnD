@@ -3,7 +3,6 @@ import pandas as pd
 from docx import Document
 import os
 import re
-from difflib import SequenceMatcher
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
@@ -40,64 +39,46 @@ def load_rules_for_requirement(requirement_id):
         st.warning(f"No rules file found for {requirement_id}")
         return ""
 
-# ---------------- Intelligent Comparison with Color Coding ----------------
-def similar(a, b):
-    return SequenceMatcher(None, a, b).ratio()
-
+# ---------------- Utility ----------------
 def normalize_text(text):
     text = text.lower()
     text = re.sub(r'[^\w\s\d]', '', text)  # Remove punctuation
     text = re.sub(r'\s+', ' ', text)       # Normalize whitespace
     return text.strip()
 
-def compare_rule_to_plan_colored(rule_text, plan_text, threshold=0.7, partial_threshold=0.5):
+# ---------------- Smart Comparison (Covered / Missing) ----------------
+def compare_rule_to_plan_smart(rule_text, plan_text):
     """
-    Compare rule text with proposed plan intelligently.
-    - Splits rule lines into sub-items (numbers, key phrases).
-    - Checks if each sub-item exists anywhere in the proposed plan.
-    - Returns colored status per rule line: covered, partial, missing.
+    Smart comparison: check each rule line if it is fully covered somewhere in the proposed plan.
+    Only two statuses: covered ✅ and missing ❌
     """
-    # Normalize proposed plan text as a single string
     plan_norm = normalize_text(plan_text)
-    
     rule_lines = [line.strip() for line in rule_text.split("\n") if line.strip()]
     results = []
 
     for rline in rule_lines:
         rline_norm = normalize_text(rline)
 
-        # Extract numbers/phrases from the rule line
+        # Extract numbers and words
         numbers_in_rline = re.findall(r'\d+\.?\d*', rline_norm)
         words_in_rline = [w for w in rline_norm.split() if not w.isdigit()]
 
-        matched_count = 0
-        partial = False
+        all_matched = True
 
         # Check numbers
         for num in numbers_in_rline:
-            if num in plan_norm:
-                matched_count += 1
+            if num not in plan_norm:
+                all_matched = False
+                break
 
-        # Check words/phrases with fuzzy matching
-        for word in words_in_rline:
-            # Exact match first
-            if word in plan_norm:
-                matched_count += 1
-            else:
-                # Partial/fuzzy match
-                words_in_plan = plan_norm.split()
-                if any(similar(word, w) >= partial_threshold for w in words_in_plan):
-                    partial = True
+        # Check words
+        if all_matched:
+            for word in words_in_rline:
+                if word not in plan_norm:
+                    all_matched = False
+                    break
 
-        # Decide status
-        total_items = len(numbers_in_rline) + len(words_in_rline)
-        if matched_count == total_items:
-            status = "covered"
-        elif matched_count > 0 or partial:
-            status = "partial"
-        else:
-            status = "missing"
-
+        status = "covered" if all_matched else "missing"
         results.append((rline, status))
 
     return results
@@ -159,24 +140,21 @@ if df is not None:
                     if not rule_text:
                         st.warning(f"Rule.docx missing")
                     else:
-                        # --- Compare with color coding
-                        comparison_results = compare_rule_to_plan_colored(rule_text, plan_text)
+                        # --- Smart comparison
+                        comparison_results = compare_rule_to_plan_smart(rule_text, plan_text)
 
                         # --- Display Legend
                         st.markdown("## Legend")
-                        st.markdown("<span style='color:green'> Covered </span>", unsafe_allow_html=True)
-                        st.markdown("<span style='color:orange'> Partially covered (fuzzy match)</span>", unsafe_allow_html=True)
-                        st.markdown("<span style='color:red'> Missing </span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:green'>✅ Covered: Rule item is fully addressed in the proposed plan</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:red'>❌ Missing: Rule item is not addressed in the proposed plan</span>", unsafe_allow_html=True)
 
                         # --- Display Test Coverage Suggestions
                         st.markdown("## Test Coverage Suggestions")
                         for item, status in comparison_results:
                             if status == "covered":
-                                st.markdown(f"<span style='color:green'> {item}</span>", unsafe_allow_html=True)
-                            elif status == "partial":
-                                st.markdown(f"<span style='color:orange'> {item}</span>", unsafe_allow_html=True)
+                                st.markdown(f"<span style='color:green'>✅ {item}</span>", unsafe_allow_html=True)
                             else:
-                                st.markdown(f"<span style='color:red'> {item}</span>", unsafe_allow_html=True)
+                                st.markdown(f"<span style='color:red'>❌ {item}</span>", unsafe_allow_html=True)
 
                         # --- AI-based suggestions placeholder
                         missing_items = [item for item, status in comparison_results if status == "missing"]
