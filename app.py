@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
-import requests
 from io import BytesIO
 import openai
 
@@ -10,9 +9,7 @@ st.set_page_config(page_title="DVT Test Planner - Rule + AI", layout="wide")
 st.title("DVT Test Planner with Rule-Based + AI Coverage Analysis")
 
 # ---------------- File Config ----------------
-REQUIREMENTS_FILE = "dvt_requirements.csv"   # CSV in your GitHub repo
-GITHUB_RULES_BASE_URL = "https://raw.githubusercontent.com/your-username/your-repo/main/" 
-# 👆 change to your repo path
+REQUIREMENTS_FILE = "dvt_requirements.csv"   # CSV in your repo/local
 
 # ---------------- Read Requirements ----------------
 def read_requirements_file():
@@ -33,18 +30,14 @@ def docx_to_text(file):
     doc = Document(file)
     return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
-def load_rules_for_requirement(requirement_id):
-    """Fetch the rule .docx for the given requirement ID from GitHub"""
-    url = f"{GITHUB_RULES_BASE_URL}{requirement_id}_Rule.docx"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        doc = Document(BytesIO(response.content))
-        # Rule text = all paragraphs combined
+# ---------------- Load Rules ----------------
+def load_rules_for_requirement(requirement_id, uploaded_file=None):
+    """Use uploaded rule file if provided, otherwise return empty"""
+    if uploaded_file:
+        doc = Document(uploaded_file)
         return "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
-    except Exception as e:
-        st.warning(f"No rules file found for {requirement_id}: {e}")
-        return ""
+    # If no uploaded file, return empty (no GitHub fetching here)
+    return ""
 
 # ---------------- Rule-Based Analysis ----------------
 def analyze_rule_based(plan_text, requirement_id, taxonomy_rule):
@@ -136,31 +129,36 @@ if df is not None:
         else:
             st.error("No match found for that Requirement ID.")
 
-    # --- File uploader (Proposed Test Plan)
-    uploaded_file = st.file_uploader(
-        "Upload Proposed Test Plan (.docx or .txt)", 
-        type=["docx", "txt"], 
-        disabled=not valid_id
-    )
+    if valid_id:
+        # --- Rule File uploader
+        uploaded_rule_file = st.file_uploader(
+            "Upload Rule File (.docx) for this Requirement ID",
+            type=["docx"]
+        )
 
-    if valid_id and uploaded_file:
-        if uploaded_file.name.endswith(".docx"):
-            plan_text = docx_to_text(uploaded_file)
-        else:
-            plan_text = uploaded_file.read().decode("utf-8")
+        # --- Test Plan uploader
+        uploaded_plan_file = st.file_uploader(
+            "Upload Proposed Test Plan (.docx or .txt)", 
+            type=["docx", "txt"]
+        )
 
-        if st.button("Analyze Test Plan"):
-            with st.spinner("Analyzing test plan..."):
-                taxonomy_rule = load_rules_for_requirement(user_input)
-                if not taxonomy_rule:
-                    st.warning(f"⚠️ No rules found for {user_input}_Rule.docx in repo.")
-                analysis_output, missing_tests = analyze_rule_based(plan_text, user_input, taxonomy_rule)
-                st.markdown(analysis_output)
+        if uploaded_plan_file:
+            if uploaded_plan_file.name.endswith(".docx"):
+                plan_text = docx_to_text(uploaded_plan_file)
+            else:
+                plan_text = uploaded_plan_file.read().decode("utf-8")
 
-                if missing_tests:
-                    st.markdown("### AI-Based Suggestions:")
-                    ai_output = get_ai_suggestions(plan_text, missing_tests)
-                    st.markdown(ai_output)
+            if st.button("Analyze Test Plan"):
+                with st.spinner("Analyzing test plan..."):
+                    taxonomy_rule = load_rules_for_requirement(user_input, uploaded_file=uploaded_rule_file)
+                    if not taxonomy_rule:
+                        st.warning(f"⚠️ No rules found for {user_input}. Please upload a rule file.")
+                    analysis_output, missing_tests = analyze_rule_based(plan_text, user_input, taxonomy_rule)
+                    st.markdown(analysis_output)
 
+                    if missing_tests:
+                        st.markdown("### AI-Based Suggestions:")
+                        ai_output = get_ai_suggestions(plan_text, missing_tests)
+                        st.markdown(ai_output)
 else:
     st.error("Could not load the requirements file.")
