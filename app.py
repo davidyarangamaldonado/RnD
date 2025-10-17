@@ -9,8 +9,7 @@ st.set_page_config(page_title="DVT Test Planner - Rule + AI", layout="wide")
 st.title("DVT Test Planner with Rule-Based + AI Coverage Analysis")
 
 # ---------------- Repo Config ----------------
-# Set this to the path where your linked GitHub repo is mounted
-REPO_PATH = "."  # If the repo is cloned at the root of the app environment
+REPO_PATH = "."  # Path to your linked repo
 REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.csv")
 
 # ---------------- Read Requirements CSV ----------------
@@ -41,7 +40,7 @@ def load_rules_for_requirement(requirement_id):
         return ""
 
 # ---------------- Rule-Based Analysis ----------------
-def analyze_rule_based(plan_text, requirement_id, taxonomy_rule):
+def analyze_rule_based(plan_text, taxonomy_rule):
     plan_lines = [line.strip() for line in plan_text.split("\n") if line.strip()]
     taxonomy_keywords = [kw.strip() for kw in taxonomy_rule.split(",") if kw.strip()]
 
@@ -54,30 +53,20 @@ def analyze_rule_based(plan_text, requirement_id, taxonomy_rule):
         else:
             missing.append(kw)
 
-    output = f"**Requirement ID:** {requirement_id}\n\n"
-    output += "### Uploaded Test Plan\n"
-    output += "\n".join(plan_lines) + "\n\n"
-
-    output += "### Rule-Based Analysis:\n"
+    output = "### Rule-Based Analysis:\n"
     output += f"**Covered Tests:** {', '.join(covered) if covered else 'None'}\n"
     output += f"**Missing Tests:** {', '.join(missing) if missing else 'None'}\n"
-
-    if missing:
-        output += "\n### Suggestions (Rule-Based):\n"
-        for m in missing:
-            output += f"- Add test steps to cover: {m}\n"
-    else:
-        output += "\nAll taxonomy rules are covered. No additional tests needed.\n"
 
     return output, missing
 
 # ---------------- AI-Based Suggestions ----------------
 def get_ai_suggestions(plan_text, missing_tests):
-    if not st.session_state.get("OPENAI_API_KEY"):
-        return "_AI suggestions not available. Please configure your API key._"
+    api_key = st.secrets.get("OPENAI_API_KEY", None)
+    if not api_key:
+        return "_AI suggestions not available. Please configure your API key in secrets.toml_"
 
     try:
-        openai.api_key = st.session_state["OPENAI_API_KEY"]
+        openai.api_key = api_key
         prompt = f"""
         You are an expert test engineer. A proposed test plan is given below:
 
@@ -113,12 +102,6 @@ if df is not None:
 
     id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
 
-    # --- API Key input
-    st.sidebar.subheader("🔑 OpenAI API Key")
-    api_key_input = st.sidebar.text_input("Enter API Key:", type="password")
-    if api_key_input:
-        st.session_state["OPENAI_API_KEY"] = api_key_input
-
     # --- Requirement ID input
     user_input = st.text_input("Enter the Requirement ID (e.g. DS-1):").strip().upper()
     valid_id = False
@@ -148,13 +131,19 @@ if df is not None:
                     # Load rule from repo automatically
                     taxonomy_rule = load_rules_for_requirement(user_input)
                     if not taxonomy_rule:
-                        st.warning(f"⚠️ No rules found for {user_input}. Check that the rule file exists in your repo.")
-                    analysis_output, missing_tests = analyze_rule_based(plan_text, user_input, taxonomy_rule)
-                    st.markdown(analysis_output)
+                        st.warning(f"No rules found for {user_input}. Check that the rule file exists in your repo.")
+                        taxonomy_rule = ""
 
-                    if missing_tests:
-                        st.markdown("### AI-Based Suggestions:")
-                        ai_output = get_ai_suggestions(plan_text, missing_tests)
-                        st.markdown(ai_output)
+                    # --- Rule-Based analysis
+                    rule_output, missing_tests = analyze_rule_based(plan_text, taxonomy_rule)
+
+                    # --- AI-based suggestions
+                    ai_output = get_ai_suggestions(plan_text, missing_tests) if missing_tests else "No additional suggestions needed."
+
+                    # --- Combined output
+                    st.markdown("### Combined Suggestions")
+                    st.markdown(rule_output)
+                    st.markdown("### AI-Based Suggestions")
+                    st.markdown(ai_output)
 else:
     st.error("Could not load the requirements file from the repo.")
