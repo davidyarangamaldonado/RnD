@@ -4,8 +4,8 @@ from docx import Document
 import os
 
 # ---------------- Streamlit Setup ----------------
-st.set_page_config(page_title="DVT Test Planner - Test Coverage", layout="wide")
-st.title("DVT Test Planner - Test Coverage Suggestions")
+st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
+st.title("RnD DVT Test Planner")
 
 # ---------------- Repo Config ----------------
 REPO_PATH = "."  # Path to your linked repo
@@ -109,7 +109,7 @@ if df is not None:
                     # Load rule from repo automatically
                     rule_text = load_rules_for_requirement(user_input)
                     if not rule_text:
-                        st.warning(f"⚠️ No rules found for {user_input}. Check that the rule file exists in your repo.")
+                        st.warning(f" No rules found for {user_input}.")
                         rule_text = ""
 
                     # --- Rule-based missing items
