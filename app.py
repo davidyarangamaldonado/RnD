@@ -53,7 +53,7 @@ def compare_rule_to_plan(rule_text, plan_text):
     if missing_items:
         output = [f"- {item}" for item in missing_items]
     else:
-        output = ["- All rule items are covered in the proposed plan."]
+        output = ["- Rule.docx missing"]
 
     return output, missing_items
 
@@ -61,7 +61,7 @@ def compare_rule_to_plan(rule_text, plan_text):
 def get_ai_suggestions(missing_items):
     # Placeholder: AI not yet configured
     if missing_items:
-        return ["- AI suggestions not available. Please configure your API key in secrets.toml."]
+        return ["- AI suggestions not available. Please configure your API key"]
     else:
         return []
 
@@ -110,7 +110,7 @@ if df is not None:
                     rule_text = load_rules_for_requirement(user_input)
                     if not rule_text:
                         st.warning(f" No rules found for {user_input}.")
-                        rule_text = ""
+                       
 
                     # --- Rule-based missing items
                     rule_output, missing_items = compare_rule_to_plan(rule_text, plan_text)
