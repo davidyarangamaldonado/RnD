@@ -35,7 +35,7 @@ def load_rules_for_requirement(requirement_id):
         doc = Document(rule_file)
         return "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
     else:
-        st.warning(f"No rules file found for {requirement_id} at {rule_file}")
+        st.warning(f"No rules file found for {requirement_id}")
         return ""
 
 # ---------------- Compare Rule vs Plan ----------------
@@ -53,7 +53,7 @@ def compare_rule_to_plan(rule_text, plan_text):
     if missing_items:
         output = [f"- {item}" for item in missing_items]
     else:
-        output = ["- Rule.docx missing"]
+        st.warning(f"Rule.docx missing")
 
     return output, missing_items
 
@@ -108,8 +108,7 @@ if df is not None:
                 with st.spinner("Analyzing test plan..."):
                     # Load rule from repo automatically
                     rule_text = load_rules_for_requirement(user_input)
-                    if not rule_text:
-                        st.warning(f" No rules found for {user_input}.")
+                 
                        
 
                     # --- Rule-based missing items
