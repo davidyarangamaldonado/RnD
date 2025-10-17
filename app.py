@@ -104,20 +104,21 @@ if df is not None:
             else:
                 plan_text = uploaded_plan_file.read().decode("utf-8")
 
-            if st.button("Analyze Test Plan"):
-                with st.spinner("Analyzing test plan..."):
-                    # Load rule from repo automatically
-                    rule_text = load_rules_for_requirement(user_input)
-            else:
-                st.warning(f"Rule.docx missing")
-                       
-                    # --- Rule-based missing items
-                    rule_output, missing_items = compare_rule_to_plan(rule_text, plan_text)
+           if st.button("Analyze Test Plan"):
+               with st.spinner("Analyzing test plan..."):
+                # Load rule from repo automatically
+                rule_text = load_rules_for_requirement(user_input)
 
-                    # --- AI-based suggestions placeholder
-                    ai_output = get_ai_suggestions(missing_items)
+                    if not rule_text:
+                    st.warning(f"Rule.docx missing")
+                        else:
+                        # --- Rule-based missing items
+                        rule_output, missing_items = compare_rule_to_plan(rule_text, plan_text)
 
-                    # --- Combined Test Coverage Suggestions
-                    st.markdown("## Test Coverage Suggestions")
-                    for item in rule_output + ai_output:
+                        # --- AI-based suggestions
+                        ai_output = get_ai_suggestions(plan_text, missing_items)
+
+                        # --- Combined Test Coverage Suggestions
+                        st.markdown("## Test Coverage Suggestions")
+                        for item in rule_output + ai_output:
                         st.markdown(item)
