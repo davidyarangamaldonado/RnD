@@ -108,8 +108,8 @@ if df is not None:
                 with st.spinner("Analyzing test plan..."):
                     # Load rule from repo automatically
                     rule_text = load_rules_for_requirement(user_input)
-                    else:
-                        st.warning(f"Rule.docx missing")
+            else:
+                st.warning(f"Rule.docx missing")
                        
                     # --- Rule-based missing items
                     rule_output, missing_items = compare_rule_to_plan(rule_text, plan_text)
