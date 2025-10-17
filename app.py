@@ -214,7 +214,7 @@ if df is not None:
                         if line.strip():
                             st.markdown(f"- {line.strip()}")
 
-                    st.markdown("## Based on past Test Cases"
+                    st.markdown("## Based on past Test Cases")
                     if missing_lines:
                         for line in missing_lines:
                             st.markdown(f"- {line}")
