@@ -1,28 +1,28 @@
 import streamlit as st
 import pandas as pd
 from docx import Document
-from io import BytesIO
-import requests
+import os
 import openai
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="DVT Test Planner - Rule + AI", layout="wide")
 st.title("DVT Test Planner with Rule-Based + AI Coverage Analysis")
 
-# ---------------- GitHub Config ----------------
-GITHUB_BASE_URL = "https://raw.githubusercontent.com/your-username/your-repo/main/" 
-REQUIREMENTS_FILE_NAME = "dvt_requirements.csv"
+# ---------------- Repo Config ----------------
+# Set this to the path where your linked GitHub repo is mounted
+REPO_PATH = "."  # If the repo is cloned at the root of the app environment
+REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.csv")
 
-# ---------------- Fetch Requirements from GitHub ----------------
-def fetch_requirements_from_github():
-    url = f"{GITHUB_BASE_URL}{REQUIREMENTS_FILE_NAME}"
+# ---------------- Read Requirements CSV ----------------
+def read_requirements_file():
+    if not os.path.exists(REQUIREMENTS_FILE):
+        st.error(f"Requirements file not found at {REQUIREMENTS_FILE}")
+        return None
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        df = pd.read_csv(BytesIO(response.content))
+        df = pd.read_csv(REQUIREMENTS_FILE)
         return df
     except Exception as e:
-        st.error(f"Failed to fetch requirements file from GitHub: {e}")
+        st.error(f"Failed to read requirements file: {e}")
         return None
 
 # ---------------- Word Parsing ----------------
@@ -30,17 +30,14 @@ def docx_to_text(file):
     doc = Document(file)
     return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
 
-# ---------------- Load Rules from GitHub ----------------
+# ---------------- Load Rules ----------------
 def load_rules_for_requirement(requirement_id):
-    """Fetch the rule .docx for the given requirement ID from GitHub"""
-    url = f"{GITHUB_BASE_URL}{requirement_id}_Rule.docx"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        doc = Document(BytesIO(response.content))
+    rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
+    if os.path.exists(rule_file):
+        doc = Document(rule_file)
         return "\n".join([p.text.strip() for p in doc.paragraphs if p.text.strip()])
-    except Exception as e:
-        st.warning(f"No rules file found for {requirement_id}: {e}")
+    else:
+        st.warning(f"No rules file found for {requirement_id} at {rule_file}")
         return ""
 
 # ---------------- Rule-Based Analysis ----------------
@@ -102,7 +99,7 @@ def get_ai_suggestions(plan_text, missing_tests):
         return f"_AI suggestion failed: {e}_"
 
 # ---------------- Main UI ----------------
-df = fetch_requirements_from_github()
+df = read_requirements_file()
 
 if df is not None:
     df.columns = [str(col).strip() for col in df.columns]
@@ -148,10 +145,10 @@ if df is not None:
 
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
-                    # Load rule from GitHub automatically
+                    # Load rule from repo automatically
                     taxonomy_rule = load_rules_for_requirement(user_input)
                     if not taxonomy_rule:
-                        st.warning(f"⚠️ No rules found for {user_input}. Check that the rule file exists in your GitHub repo.")
+                        st.warning(f"⚠️ No rules found for {user_input}. Check that the rule file exists in your repo.")
                     analysis_output, missing_tests = analyze_rule_based(plan_text, user_input, taxonomy_rule)
                     st.markdown(analysis_output)
 
@@ -160,4 +157,4 @@ if df is not None:
                         ai_output = get_ai_suggestions(plan_text, missing_tests)
                         st.markdown(ai_output)
 else:
-    st.error("Could not load the requirements file from GitHub.")
+    st.error("Could not load the requirements file from the repo.")
