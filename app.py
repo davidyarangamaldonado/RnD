@@ -139,8 +139,8 @@ if df is not None:
                         if line.strip():
                             st.markdown(f"- {line.strip()}")
 
-                    # --- Display Test Coverage Suggestions (Missing Only, Plain)
-                    st.markdown("## Test Coverage Suggestions (Missing Only)")
+                    # --- Display Test Coverage Suggestions 
+                    st.markdown("## Test Coverage Suggestions")
                     if missing_lines:
                         for line in missing_lines:
                             st.markdown(f"- {line}")
