@@ -4,32 +4,30 @@ import pandas as pd
 import streamlit as st
 from docx import Document
 import google.generativeai as genai
+import requests
+from bs4 import BeautifulSoup
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
 st.title("RnD DVT Test Planner")
 
 # ---------------- Repo Config ----------------
-REPO_PATH = "."  # Path to your linked repo
+REPO_PATH = "."
 REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.csv")
 HISTORY_DIR = os.path.join(REPO_PATH, "history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
 # ---------------- API Key Loader ----------------
 def load_api_key():
-    """Load Google Gemini API key from Streamlit secrets or environment variable."""
     if hasattr(st, "secrets"):
         api_key = st.secrets.get("google_gemini", {}).get("api_key")
         if api_key:
             return api_key
-
     api_key = os.environ.get("GOOGLE_API_KEY")
     if api_key:
         return api_key
-
     return None
 
-# Load API key
 api_key = load_api_key()
 if not api_key:
     st.error(
@@ -43,7 +41,6 @@ if not api_key:
     )
     st.stop()
 
-# ---------------- Gemini Client ----------------
 genai.configure(api_key=api_key)
 st.write("✅ Google Gemini API key loaded successfully")
 
@@ -132,17 +129,35 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
+# ---------------- Online Research ----------------
+def search_online_insights(keywords):
+    urls = []
+    for keyword in keywords:
+        try:
+            query = f"{keyword} testing best practices"
+            response = requests.get(f"https://www.google.com/search?q={query}", headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for link in soup.find_all('a'):
+                href = link.get('href')
+                if href and 'url?q=' in href:
+                    urls.append(href.split('url?q=')[1].split('&')[0])
+        except:
+            continue
+    return urls[:3]  # Top 3 results
+
 # ---------------- AI Suggestions ----------------
 def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
-    if not missing_rule_lines:
-        return []
-
     history_context = load_history(requirement_id)
+
+    # Extract keywords from plan for online research
+    keywords = re.findall(r'\b\w{4,}\b', plan_text.lower())  # words 4+ letters
+    urls = search_online_insights(keywords)
 
     system_prompt = """
 You are an engineering test coverage assistant.
-Analyze the proposed test plan and provide actionable suggestions for missing coverage.
-Do not include items already covered.
+Analyze the proposed test plan and provide actionable insights, improvements, or considerations.
+Even if the plan covers all rules, suggest enhancements or highlight potential edge cases.
+Include any relevant best practices from online resources if possible.
 Provide concise bullet points.
 """
 
@@ -150,15 +165,17 @@ Provide concise bullet points.
 Proposed test plan:
 {plan_text}
 
-Missing rule lines:
-{chr(10).join(missing_rule_lines)}
+Missing rule lines (if any):
+{chr(10).join(missing_rule_lines) if missing_rule_lines else 'None'}
 
-History of previous analyses for this requirement:
-{history_context}
+Historical analyses:
+{history_context if history_context else 'None'}
+
+Online resources:
+{chr(10).join(urls) if urls else 'None'}
 """
 
     try:
-        # Correct Gemini API call
         response = genai.generate_text(
             model="gemini-2.5-flash-lite",
             prompt=system_prompt + "\n" + user_prompt,
@@ -166,10 +183,8 @@ History of previous analyses for this requirement:
         )
         ai_text = response.result[0].content[0].text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
-
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
         return suggestions
-
     except Exception as e:
         save_history(requirement_id, missing_rule_lines, plan_text, [f"AI suggestion failed: {e}"])
         return []
@@ -225,16 +240,18 @@ if df is not None:
                         if line.strip():
                             st.markdown(f"- {line.strip()}")
 
-                    st.markdown("## Based on past Test Cases")
+                    st.markdown("## Based on Past Test Cases")
                     if missing_lines:
                         for line in missing_lines:
                             st.markdown(f"- {line}")
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # Run AI suggestions
+                    # AI suggestions with online insights
                     ai_suggestions = get_ai_suggestions(plan_text, missing_lines, user_input)
+                    st.markdown("## AI Suggestions (Including Online Insights)")
                     if ai_suggestions:
-                        st.markdown("## AI Suggestions")
                         for suggestion in ai_suggestions:
                             st.markdown(f"- {suggestion}")
+                    else:
+                        st.info("No AI suggestions generated.")
