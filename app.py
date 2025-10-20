@@ -32,7 +32,7 @@ if not api_key:
 
 # ---------------- Gemini Client ----------------
 genai.configure(api_key=api_key)
-# Use free-tier compatible model
+# Free-tier compatible model
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
 st.write("Google Gemini API key loaded successfully")
 
@@ -96,12 +96,10 @@ def get_missing_rule_lines(rule_lines, plan_text):
     normalized_plan_tokens = {normalize_token(t) for t in plan_tokens}
 
     missing_lines = []
-
     for line in rule_lines:
         rule_tokens = re.findall(r'\b[\w\-\+\.]+\b', line)
         if any(normalize_token(token) not in normalized_plan_tokens for token in rule_tokens):
             missing_lines.append(line)
-
     return missing_lines
 
 # ---------------- History ----------------
@@ -149,23 +147,21 @@ History of previous analyses for this requirement:
 """
 
     try:
-        # Generate content using the free-tier compatible model
+        # Generate content using free-tier compatible model
         response = model.generate_content(system_prompt + "\n" + user_prompt)
         ai_text = response.text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
 
-        # Save to history but do not display
+        # Save history but do not show in UI
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
         return suggestions
 
     except Exception as e:
-        # Fail silently in terms of UI display
         save_history(requirement_id, missing_rule_lines, plan_text, [f"AI suggestion failed: {e}"])
         return []
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
-
 if df is not None:
     df.columns = [str(col).strip() for col in df.columns]
 
@@ -222,5 +218,5 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # AI suggestions run in background but are not shown
+                    # Run AI suggestions in background (not shown)
                     get_ai_suggestions(plan_text, missing_lines, user_input)
