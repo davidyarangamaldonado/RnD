@@ -17,7 +17,7 @@ os.makedirs(HISTORY_DIR, exist_ok=True)
 
 # ---------------- API Key Loader ----------------
 def load_api_key():
-    api_key = st.secrets.get("google", {}).get("api_key")
+    api_key = st.secrets.get("google_gemini", {}).get("api_key")
     if api_key:
         return api_key
     api_key = os.environ.get("GOOGLE_API_KEY")
@@ -32,7 +32,8 @@ if not api_key:
 
 # ---------------- Gemini Client ----------------
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-1.5-flash")
+# Use free-tier compatible model
+model = genai.GenerativeModel("gemini-2.5-flash-lite")
 st.write("Google Gemini API key loaded successfully")
 
 # ---------------- File Readers ----------------
@@ -122,7 +123,7 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- AI Suggestions ----------------
+# ---------------- AI Suggestions (hidden from UI) ----------------
 def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return []
@@ -148,15 +149,19 @@ History of previous analyses for this requirement:
 """
 
     try:
+        # Generate content using the free-tier compatible model
         response = model.generate_content(system_prompt + "\n" + user_prompt)
         ai_text = response.text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
 
+        # Save to history but do not display
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
         return suggestions
 
     except Exception as e:
-        return [f"AI suggestion failed: {e}"]
+        # Fail silently in terms of UI display
+        save_history(requirement_id, missing_rule_lines, plan_text, [f"AI suggestion failed: {e}"])
+        return []
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -217,8 +222,5 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    ai_suggestions = get_ai_suggestions(plan_text, missing_lines, user_input)
-                    if ai_suggestions:
-                        st.markdown("## AI Suggestions")
-                        for sug in ai_suggestions:
-                            st.markdown(f"- {sug}")
+                    # AI suggestions run in background but are not shown
+                    get_ai_suggestions(plan_text, missing_lines, user_input)
