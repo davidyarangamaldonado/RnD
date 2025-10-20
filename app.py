@@ -17,24 +17,47 @@ os.makedirs(HISTORY_DIR, exist_ok=True)
 
 # ---------------- API Key Loader ----------------
 def load_api_key():
-    api_key = st.secrets.get("google_gemini", {}).get("api_key")
-    if api_key:
-        return api_key
+    """
+    Load Google Gemini API key from Streamlit secrets or environment variable.
+    """
+    # Try Streamlit secrets first
+    if hasattr(st, "secrets"):
+        api_key = st.secrets.get("google_gemini", {}).get("api_key")
+        if api_key:
+            return api_key
+    
+    # Then try environment variable
     api_key = os.environ.get("GOOGLE_API_KEY")
     if api_key:
         return api_key
+
+    # If nothing found, return None
     return None
 
+# Load API key
 api_key = load_api_key()
+
+# Debugging: show loaded secrets (optional)
+st.write("Loaded secrets keys:", list(st.secrets.keys()) if hasattr(st, "secrets") else "No secrets found")
+st.write("Environment variable GOOGLE_API_KEY present:", "Yes" if os.environ.get("GOOGLE_API_KEY") else "No")
+
 if not api_key:
-    st.error("Google Gemini API key not found. Please add it in `.streamlit/secrets.toml` or set the environment variable GOOGLE_API_KEY.")
+    st.error(
+        "Google Gemini API key not found.\n\n"
+        "Make sure you either:\n"
+        "1. Add it in `.streamlit/secrets.toml` as:\n"
+        "   [google_gemini]\n"
+        "   api_key = \"YOUR_API_KEY\"\n"
+        "OR\n"
+        "2. Set the environment variable `GOOGLE_API_KEY`."
+    )
     st.stop()
 
 # ---------------- Gemini Client ----------------
 genai.configure(api_key=api_key)
 # Free-tier compatible model
 model = genai.GenerativeModel("gemini-2.5-flash-lite")
-st.write("Google Gemini API key loaded successfully")
+st.write("✅ Google Gemini API key loaded successfully")
 
 # ---------------- File Readers ----------------
 def read_requirements_file():
@@ -121,7 +144,7 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- AI Suggestions (hidden from UI) ----------------
+# ---------------- AI Suggestions ----------------
 def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return []
@@ -147,12 +170,10 @@ History of previous analyses for this requirement:
 """
 
     try:
-        # Generate content using free-tier compatible model
         response = model.generate_content(system_prompt + "\n" + user_prompt)
         ai_text = response.text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
 
-        # Save history but do not show in UI
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
         return suggestions
 
