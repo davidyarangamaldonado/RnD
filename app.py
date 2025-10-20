@@ -17,30 +17,20 @@ os.makedirs(HISTORY_DIR, exist_ok=True)
 
 # ---------------- API Key Loader ----------------
 def load_api_key():
-    """
-    Load Google Gemini API key from Streamlit secrets or environment variable.
-    """
-    # Try Streamlit secrets first
+    """Load Google Gemini API key from Streamlit secrets or environment variable."""
     if hasattr(st, "secrets"):
         api_key = st.secrets.get("google_gemini", {}).get("api_key")
         if api_key:
             return api_key
-    
-    # Then try environment variable
+
     api_key = os.environ.get("GOOGLE_API_KEY")
     if api_key:
         return api_key
 
-    # If nothing found, return None
     return None
 
 # Load API key
 api_key = load_api_key()
-
-# Debugging: show loaded secrets (optional)
-st.write("Loaded secrets keys:", list(st.secrets.keys()) if hasattr(st, "secrets") else "No secrets found")
-st.write("Environment variable GOOGLE_API_KEY present:", "Yes" if os.environ.get("GOOGLE_API_KEY") else "No")
-
 if not api_key:
     st.error(
         "Google Gemini API key not found.\n\n"
@@ -55,8 +45,6 @@ if not api_key:
 
 # ---------------- Gemini Client ----------------
 genai.configure(api_key=api_key)
-# Free-tier compatible model
-model = genai.GenerativeModel("gemini-2.5-flash-lite")
 st.write("✅ Google Gemini API key loaded successfully")
 
 # ---------------- File Readers ----------------
@@ -170,8 +158,13 @@ History of previous analyses for this requirement:
 """
 
     try:
-        response = model.generate_content(system_prompt + "\n" + user_prompt)
-        ai_text = response.text
+        # Correct Gemini API call
+        response = genai.generate_text(
+            model="gemini-2.5-flash-lite",
+            prompt=system_prompt + "\n" + user_prompt,
+            temperature=0.2
+        )
+        ai_text = response.result[0].content[0].text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
 
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
@@ -239,5 +232,9 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # Run AI suggestions in background (not shown)
-                    get_ai_suggestions(plan_text, missing_lines, user_input)
+                    # Run AI suggestions
+                    ai_suggestions = get_ai_suggestions(plan_text, missing_lines, user_input)
+                    if ai_suggestions:
+                        st.markdown("## AI Suggestions")
+                        for suggestion in ai_suggestions:
+                            st.markdown(f"- {suggestion}")
