@@ -117,48 +117,47 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- Gemini AI Suggestions with Error Logging ----------------
+# ---------------- Gemini Chat AI Suggestions ----------------
 def get_gemini_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return ["No missing rules; coverage complete"]
 
-    chunks = [plan_text[i:i+1000] for i in range(0, len(plan_text), 1000)]
-    all_suggestions = []
-
-    for chunk in chunks:
-        prompt = f"""
+    prompt = f"""
 You are an engineering test coverage assistant.
 Analyze the proposed test plan below and provide up to 3 concise suggestions to improve coverage.
 Include a short reasoning for each suggestion.
 
 Proposed Test Plan:
-{chunk}
+{plan_text}
 
 Missing Rules:
 {chr(10).join(missing_rule_lines)}
 """
-        try:
-            if not api_key:
-                return ["AI suggestion failed: No API key configured"]
 
-            response = genai.generate_text(
-                model="gemini-2.5-flash-lite",
-                prompt=prompt,
-                temperature=0.3,
-                max_output_tokens=300
-            )
+    try:
+        if not api_key:
+            return ["AI suggestion failed: No API key configured"]
 
-            if response.result and len(response.result) > 0:
-                ai_text = response.result[0].content[0].text
-                suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
-                all_suggestions.extend(suggestions)
-        except Exception as e:
-            # Show the actual exception and traceback in UI
-            tb = traceback.format_exc()
-            return [f"AI suggestion failed: {str(e)}", f"Traceback: {tb}"]
+        response = genai.chat.create(
+            model="gemini-2.5-chat",
+            messages=[
+                {"role": "system", "content": "You are an engineering test coverage assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
+        )
 
-    final_suggestions = list(dict.fromkeys(all_suggestions))[:3]
-    return final_suggestions if final_suggestions else ["AI suggestion failed"]
+        ai_text = response.last.message.content[0].text
+        suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
+        suggestions = list(dict.fromkeys(suggestions))[:3]  # top 3
+        if not suggestions:
+            return ["AI suggestion failed"]
+        save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
+        return suggestions
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        return [f"AI suggestion failed: {str(e)}", f"Traceback: {tb}"]
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -218,7 +217,7 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # Run Gemini ChatGPT-style suggestions
+                    # Run Gemini Chat suggestions
                     ai_suggestions = get_gemini_suggestions(plan_text, missing_lines, user_input)
                     st.markdown("## AI Suggestions with Reasoning (Top 3)")
                     for suggestion in ai_suggestions:
