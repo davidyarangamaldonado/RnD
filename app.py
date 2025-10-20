@@ -126,54 +126,39 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- Gemini AI Suggestions with Reasoning ----------------
-@st.cache_data(show_spinner=False)
-def get_ai_suggestions_with_reasoning(plan_text, missing_rule_lines, requirement_id):
+# ---------------- Gemini AI Suggestions (Proof of Concept) ----------------
+def get_ai_suggestions_proof(plan_text, missing_rule_lines, requirement_id):
     history_context = load_history(requirement_id)
 
-    system_prompt = """
+    prompt = f"""
 You are an engineering test coverage assistant.
-Analyze the proposed test plan and provide actionable suggestions to improve test coverage.
-For each suggestion, provide a short reasoning explaining why it improves coverage.
-Do not include items already covered.
-Provide concise bullet points.
-"""
+Analyze the following proposed test plan and provide up to 3 concise actionable suggestions to improve test coverage.
+Include a short reasoning for each suggestion.
 
-    user_prompt = f"""
-Proposed test plan:
+Proposed Test Plan:
 {plan_text}
 
-Missing rule lines:
+Missing Rules:
 {chr(10).join(missing_rule_lines) if missing_rule_lines else 'None'}
 
-History of previous analyses:
+History:
 {history_context if history_context else 'None'}
 """
 
     try:
         response = genai.generate_text(
             model="gemini-2.5-flash-lite",
-            prompt=system_prompt + "\n" + user_prompt,
-            temperature=0.2
+            prompt=prompt,
+            temperature=0.2,
+            max_output_tokens=300
         )
-        ai_text = response.result[0].content[0].text
-        suggestions_raw = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
-        if not suggestions_raw:
-            suggestions_raw = ["AI suggestion failed"]
 
-        # Limit to top 3 suggestions
-        top_suggestions = suggestions_raw[:3]
+        ai_text = response.result[0].content[0].text if response.result else ""
+        suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
+        if not suggestions:
+            suggestions = ["AI suggestion failed"]
 
-        # Optional: format suggestion + reasoning
-        formatted_suggestions = []
-        for s in top_suggestions:
-            if ":" in s:
-                formatted_suggestions.append(s)  # e.g., "Add test X: ensures coverage of Y"
-            else:
-                formatted_suggestions.append(f"{s}: Reasoning not provided")
-        
-        save_history(requirement_id, missing_rule_lines, plan_text, formatted_suggestions)
-        return formatted_suggestions
+        return suggestions[:3]  # top 3
 
     except Exception:
         return ["AI suggestion failed"]
@@ -236,8 +221,8 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # Run Gemini AI suggestions with reasoning
-                    ai_suggestions = get_ai_suggestions_with_reasoning(plan_text, missing_lines, user_input)
+                    # Run Gemini AI suggestions (proof of concept)
+                    ai_suggestions = get_ai_suggestions_proof(plan_text, missing_lines, user_input)
                     st.markdown("## AI Suggestions with Reasoning (Top 3)")
                     for suggestion in ai_suggestions:
                         st.markdown(f"- {suggestion}")
