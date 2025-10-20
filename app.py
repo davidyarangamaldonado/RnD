@@ -4,8 +4,6 @@ import pandas as pd
 import streamlit as st
 from docx import Document
 import google.generativeai as genai
-import requests
-from bs4 import BeautifulSoup
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
@@ -128,37 +126,15 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- AI Suggestions (POC with first online insight) ----------------
+# ---------------- Gemini AI Suggestions with Reasoning ----------------
 @st.cache_data(show_spinner=False)
-def get_ai_suggestions_with_online(plan_text, missing_rule_lines, requirement_id):
+def get_ai_suggestions_with_reasoning(plan_text, missing_rule_lines, requirement_id):
     history_context = load_history(requirement_id)
-
-    # Try fetching first online resource
-    online_snippet = ""
-    try:
-        keywords = re.findall(r'\b\w{4,}\b', plan_text.lower())[:5]
-        for keyword in keywords:
-            query = f"{keyword} testing best practices"
-            resp = requests.get(
-                f"https://www.google.com/search?q={query}",
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=3
-            )
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            # Take first link
-            link = next((a.get('href').split('url?q=')[1].split('&')[0]
-                         for a in soup.find_all('a') if a.get('href') and 'url?q=' in a.get('href')), None)
-            if link:
-                page_resp = requests.get(link, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
-                page_soup = BeautifulSoup(page_resp.text, 'html.parser')
-                online_snippet = ' '.join(p.get_text() for p in page_soup.find_all('p'))[:1000]
-                break
-    except Exception:
-        online_snippet = ""
 
     system_prompt = """
 You are an engineering test coverage assistant.
 Analyze the proposed test plan and provide actionable suggestions to improve test coverage.
+For each suggestion, provide a short reasoning explaining why it improves coverage.
 Do not include items already covered.
 Provide concise bullet points.
 """
@@ -172,9 +148,6 @@ Missing rule lines:
 
 History of previous analyses:
 {history_context if history_context else 'None'}
-
-Online snippet (if available):
-{online_snippet if online_snippet else 'None'}
 """
 
     try:
@@ -184,11 +157,24 @@ Online snippet (if available):
             temperature=0.2
         )
         ai_text = response.result[0].content[0].text
-        suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
-        if not suggestions:
-            suggestions = ["AI suggestion failed"]
-        save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
-        return suggestions
+        suggestions_raw = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
+        if not suggestions_raw:
+            suggestions_raw = ["AI suggestion failed"]
+
+        # Limit to top 3 suggestions
+        top_suggestions = suggestions_raw[:3]
+
+        # Optional: format suggestion + reasoning
+        formatted_suggestions = []
+        for s in top_suggestions:
+            if ":" in s:
+                formatted_suggestions.append(s)  # e.g., "Add test X: ensures coverage of Y"
+            else:
+                formatted_suggestions.append(f"{s}: Reasoning not provided")
+        
+        save_history(requirement_id, missing_rule_lines, plan_text, formatted_suggestions)
+        return formatted_suggestions
+
     except Exception:
         return ["AI suggestion failed"]
 
@@ -250,8 +236,8 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # Run AI suggestions (POC)
-                    ai_suggestions = get_ai_suggestions_with_online(plan_text, missing_lines, user_input)
-                    st.markdown("## AI Suggestions (Proof of Concept with Online Insight)")
+                    # Run Gemini AI suggestions with reasoning
+                    ai_suggestions = get_ai_suggestions_with_reasoning(plan_text, missing_lines, user_input)
+                    st.markdown("## AI Suggestions with Reasoning (Top 3)")
                     for suggestion in ai_suggestions:
                         st.markdown(f"- {suggestion}")
