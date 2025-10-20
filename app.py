@@ -138,11 +138,10 @@ Missing Rules:
         if not api_key:
             return ["AI suggestion failed: No API key configured"]
 
-        client = genai.Client()
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
+        # Instantiate the model
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        # Generate content
+        response = model.generate_content(prompt)
 
         ai_text = response.text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
