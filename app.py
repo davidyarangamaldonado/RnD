@@ -115,12 +115,15 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
     with open(history_file, "w") as f:
         f.write("Rule Lines:\n" + "\n".join(missing_rule_lines) + "\n\n")
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
-        f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
+        if isinstance(ai_suggestions, list):
+            f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
+        else:
+            f.write("AI Suggestions:\n" + ai_suggestions)
 
 # ---------------- Gemini AI Suggestions ----------------
 def get_gemini_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
-        return ["No missing rules; coverage complete"]
+        return "No missing rules; coverage complete"
 
     history = load_history(requirement_id)
 
@@ -141,11 +144,21 @@ Proposed Test Plan:
 
 Missing Rules:
 {chr(10).join(missing_rule_lines)}
+
+Output ONLY the suggestions in the following exact markdown format, with no additional text or numbering:
+
+- **Suggestion:** Concise suggestion description.
+  - **Reasoning:** Short reasoning here.
+
+- **Suggestion:** Concise suggestion description.
+  - **Reasoning:** Short reasoning here.
+
+And so on up to 5.
 """
 
     try:
         if not api_key:
-            return ["AI suggestion failed: No API key configured"]
+            return "AI suggestion failed: No API key configured"
 
         # Instantiate the model (using gemini-2.5-pro for better reasoning)
         model = genai.GenerativeModel('gemini-2.5-pro')
@@ -153,16 +166,15 @@ Missing Rules:
         response = model.generate_content(prompt)
 
         ai_text = response.text
-        suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
-        suggestions = list(dict.fromkeys(suggestions))[:5]  # up to 5
-        if not suggestions:
-            return ["AI suggestion failed"]
-        save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
-        return suggestions
+        if not ai_text.strip():
+            return "AI suggestion failed"
+        save_history(requirement_id, missing_rule_lines, plan_text, ai_text)
+        return ai_text
 
     except Exception as e:
         tb = traceback.format_exc()
-        return [f"AI suggestion failed: {str(e)}", f"Traceback: {tb}"]
+        error_msg = f"AI suggestion failed: {str(e)}\n\nTraceback: {tb}"
+        return error_msg
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -225,5 +237,4 @@ if df is not None:
                     # Run Gemini suggestions
                     ai_suggestions = get_gemini_suggestions(plan_text, missing_lines, user_input)
                     st.markdown("## AI Suggestions")
-                    for suggestion in ai_suggestions:
-                        st.markdown(f"- {suggestion}")
+                    st.markdown(ai_suggestions)
