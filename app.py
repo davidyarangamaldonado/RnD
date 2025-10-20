@@ -3,19 +3,19 @@ import re
 import pandas as pd
 import streamlit as st
 from docx import Document
-from google import genai
+import google.generativeai as genai
 
-# Set up page configuration
+# ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
 st.title("RnD DVT Test Planner")
 
-# Define paths
+# ---------------- Repo Config ----------------
 REPO_PATH = "."  # Path to your linked repo
 REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.csv")
 HISTORY_DIR = os.path.join(REPO_PATH, "history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
-# Load API key from Streamlit secrets or environment variable
+# ---------------- API Key Loader ----------------
 def load_api_key():
     api_key = st.secrets.get("google", {}).get("api_key")
     if api_key:
@@ -30,11 +30,12 @@ if not api_key:
     st.error("Google Gemini API key not found. Please add it in `.streamlit/secrets.toml` or set the environment variable GOOGLE_API_KEY.")
     st.stop()
 
-# Initialize GenAI client
-client = genai.Client(api_key=api_key)
+# ---------------- Gemini Client ----------------
+genai.configure(api_key=api_key)
+model = genai.GenerativeModel("gemini-1.5-flash")
 st.write("Google Gemini API key loaded successfully")
 
-# Read requirements file
+# ---------------- File Readers ----------------
 def read_requirements_file():
     if not os.path.exists(REQUIREMENTS_FILE):
         st.error(f"Requirements file not found at {REQUIREMENTS_FILE}")
@@ -46,12 +47,10 @@ def read_requirements_file():
         st.error(f"Failed to read requirements file: {e}")
         return None
 
-# Convert DOCX to text
 def docx_to_text(file):
     doc = Document(file)
     return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
 
-# Load rules for a specific requirement
 def load_rules_for_requirement(requirement_id):
     rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
     if os.path.exists(rule_file):
@@ -65,7 +64,7 @@ def load_rules_for_requirement(requirement_id):
         st.warning(f"No rules file found for {requirement_id}")
         return []
 
-# Normalize tokens
+# ---------------- Token Normalization ----------------
 def normalize_token(token):
     token = token.lower()
     match = re.match(r'(-?\d+\.?\d*)([a-z%]*)', token)
@@ -79,7 +78,6 @@ def normalize_token(token):
         token = re.sub(r'[^a-z0-9]', '', token)
         return token
 
-# Extract check items from text
 def extract_check_items_robust(text):
     text = text.lower()
     number_matches = re.findall(r'-?\d+\.?\d*\s*[a-z%]*', text)
@@ -91,7 +89,7 @@ def extract_check_items_robust(text):
             items.add(cleaned)
     return items
 
-# Compare rule lines with plan text
+# ---------------- Comparison ----------------
 def get_missing_rule_lines(rule_lines, plan_text):
     plan_tokens = extract_check_items_robust(plan_text)
     normalized_plan_tokens = {normalize_token(t) for t in plan_tokens}
@@ -105,7 +103,7 @@ def get_missing_rule_lines(rule_lines, plan_text):
 
     return missing_lines
 
-# Load history for a requirement
+# ---------------- History ----------------
 def load_history(requirement_id):
     if not os.path.exists(HISTORY_DIR):
         return ""
@@ -116,7 +114,6 @@ def load_history(requirement_id):
             history_texts.append(f.read())
     return "\n".join(history_texts)
 
-# Save history for a requirement
 def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
     timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
     history_file = os.path.join(HISTORY_DIR, f"{requirement_id}_{timestamp}.txt")
@@ -125,7 +122,7 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# Get AI suggestions
+# ---------------- AI Suggestions ----------------
 def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return []
@@ -151,26 +148,17 @@ History of previous analyses for this requirement:
 """
 
     try:
-        # Use a valid Gemini model and chat method
-        response = client.chat(
-            model="gemini-1.5",  # replace with a valid model from list_models() if needed
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-        )
-
-        ai_text = response.last["content"]
+        response = model.generate_content(system_prompt + "\n" + user_prompt)
+        ai_text = response.text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
 
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
-
         return suggestions
 
     except Exception as e:
         return [f"AI suggestion failed: {e}"]
 
-# Main UI
+# ---------------- Main UI ----------------
 df = read_requirements_file()
 
 if df is not None:
