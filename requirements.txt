@@ -1,8 +1,0 @@
-streamlit
-pandas
-python-docx
-openpyxl
-xlrd
-Pillow
-google-genai
-
