@@ -122,10 +122,19 @@ def get_gemini_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return ["No missing rules; coverage complete"]
 
+    history = load_history(requirement_id)
+
     prompt = f"""
-You are an engineering test coverage assistant.
-Analyze the proposed test plan below and provide up to 3 concise suggestions to improve coverage.
+You are an engineering test coverage assistant, expert in RF and power systems.
+Analyze the proposed test plan below and provide up to 5 concise suggestions to improve the test coverage.
+Focus on critical areas such as safety, edge cases, performance metrics, and compliance with standards.
+Use your expertise to suggest practical, implementable tests.
 Include a short reasoning for each suggestion.
+
+Review the past analyses below to build upon previous suggestions, avoid redundancy, and provide novel insights where possible.
+
+Past Analyses:
+{history}
 
 Proposed Test Plan:
 {plan_text}
@@ -138,14 +147,14 @@ Missing Rules:
         if not api_key:
             return ["AI suggestion failed: No API key configured"]
 
-        # Instantiate the model
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # Instantiate the model (using gemini-2.5-pro for better reasoning)
+        model = genai.GenerativeModel('gemini-2.5-pro')
         # Generate content
         response = model.generate_content(prompt)
 
         ai_text = response.text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
-        suggestions = list(dict.fromkeys(suggestions))[:3]  # top 3
+        suggestions = list(dict.fromkeys(suggestions))[:5]  # up to 5
         if not suggestions:
             return ["AI suggestion failed"]
         save_history(requirement_id, missing_rule_lines, plan_text, suggestions)
@@ -215,6 +224,6 @@ if df is not None:
 
                     # Run Gemini suggestions
                     ai_suggestions = get_gemini_suggestions(plan_text, missing_lines, user_input)
-                    st.markdown("## AI Suggestions with Reasoning (Top 3)")
+                    st.markdown("## AI Suggestions")
                     for suggestion in ai_suggestions:
                         st.markdown(f"- {suggestion}")
