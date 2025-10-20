@@ -117,7 +117,7 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- Gemini Chat AI Suggestions ----------------
+# ---------------- Gemini AI Suggestions ----------------
 def get_gemini_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return ["No missing rules; coverage complete"]
@@ -138,16 +138,12 @@ Missing Rules:
         if not api_key:
             return ["AI suggestion failed: No API key configured"]
 
-        response = genai.chat.create(
-            model="gemini-2.5-chat",
-            messages=[
-                {"role": "system", "content": "You are an engineering test coverage assistant."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3
+        response = genai.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
         )
 
-        ai_text = response.last.message.content[0].text
+        ai_text = response.text
         suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
         suggestions = list(dict.fromkeys(suggestions))[:3]  # top 3
         if not suggestions:
@@ -217,7 +213,7 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # Run Gemini Chat suggestions
+                    # Run Gemini suggestions
                     ai_suggestions = get_gemini_suggestions(plan_text, missing_lines, user_input)
                     st.markdown("## AI Suggestions with Reasoning (Top 3)")
                     for suggestion in ai_suggestions:
