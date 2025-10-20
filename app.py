@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 from docx import Document
 import google.generativeai as genai
+import traceback
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
@@ -116,12 +117,11 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- Gemini ChatGPT-Style AI Suggestions ----------------
+# ---------------- Gemini AI Suggestions with Error Logging ----------------
 def get_gemini_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return ["No missing rules; coverage complete"]
 
-    # Split plan into sections of ~1000 characters to avoid empty response
     chunks = [plan_text[i:i+1000] for i in range(0, len(plan_text), 1000)]
     all_suggestions = []
 
@@ -139,7 +139,7 @@ Missing Rules:
 """
         try:
             if not api_key:
-                return ["AI suggestion failed"]
+                return ["AI suggestion failed: No API key configured"]
 
             response = genai.generate_text(
                 model="gemini-2.5-flash-lite",
@@ -152,10 +152,11 @@ Missing Rules:
                 ai_text = response.result[0].content[0].text
                 suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
                 all_suggestions.extend(suggestions)
-        except Exception:
-            continue
+        except Exception as e:
+            # Show the actual exception and traceback in UI
+            tb = traceback.format_exc()
+            return [f"AI suggestion failed: {str(e)}", f"Traceback: {tb}"]
 
-    # Deduplicate and limit to top 3
     final_suggestions = list(dict.fromkeys(all_suggestions))[:3]
     return final_suggestions if final_suggestions else ["AI suggestion failed"]
 
