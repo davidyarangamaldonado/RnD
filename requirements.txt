@@ -1,0 +1,7 @@
+streamlit
+pandas
+python-docx
+openpyxl
+xlrd
+Pillow
+google-generativeai==0.8.3
