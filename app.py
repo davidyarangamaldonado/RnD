@@ -28,18 +28,11 @@ def load_api_key():
 
 api_key = load_api_key()
 if not api_key:
-    st.error(
-        "Google Gemini API key not found.\n\n"
-        "Make sure you either:\n"
-        "1. Add it in `.streamlit/secrets.toml` as:\n"
-        "   [google_gemini]\n"
-        "   api_key = \"YOUR_API_KEY\"\n"
-        "OR\n"
-        "2. Set the environment variable `GOOGLE_API_KEY`."
+    st.warning(
+        "Google Gemini API key not found. AI suggestions will use proof-of-concept defaults."
     )
-    st.stop()
-
-genai.configure(api_key=api_key)
+else:
+    genai.configure(api_key=api_key)
 
 # ---------------- File Readers ----------------
 def read_requirements_file():
@@ -126,11 +119,20 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- Gemini AI Suggestions (Proof of Concept) ----------------
+# ---------------- Proof-of-Concept AI Suggestions ----------------
 def get_ai_suggestions_proof(plan_text, missing_rule_lines, requirement_id):
-    history_context = load_history(requirement_id)
+    """
+    Returns top 3 AI suggestions based on missing rules.
+    If Gemini is unavailable, uses simple proof-of-concept suggestions.
+    """
+    if not missing_rule_lines:
+        return ["No missing rules; coverage complete"]
 
-    prompt = f"""
+    # If Gemini API is available, you can call it here; otherwise, use dummy suggestions
+    if api_key:
+        try:
+            history_context = load_history(requirement_id)
+            prompt = f"""
 You are an engineering test coverage assistant.
 Analyze the following proposed test plan and provide up to 3 concise actionable suggestions to improve test coverage.
 Include a short reasoning for each suggestion.
@@ -139,29 +141,30 @@ Proposed Test Plan:
 {plan_text}
 
 Missing Rules:
-{chr(10).join(missing_rule_lines) if missing_rule_lines else 'None'}
+{chr(10).join(missing_rule_lines)}
 
 History:
 {history_context if history_context else 'None'}
 """
+            response = genai.generate_text(
+                model="gemini-2.5-flash-lite",
+                prompt=prompt,
+                temperature=0.2,
+                max_output_tokens=300
+            )
+            ai_text = response.result[0].content[0].text if response.result else ""
+            suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
+            if not suggestions:
+                suggestions = ["AI suggestion failed"]
+            return suggestions[:3]
+        except Exception:
+            return ["AI suggestion failed"]
 
-    try:
-        response = genai.generate_text(
-            model="gemini-2.5-flash-lite",
-            prompt=prompt,
-            temperature=0.2,
-            max_output_tokens=300
-        )
-
-        ai_text = response.result[0].content[0].text if response.result else ""
-        suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
-        if not suggestions:
-            suggestions = ["AI suggestion failed"]
-
-        return suggestions[:3]  # top 3
-
-    except Exception:
-        return ["AI suggestion failed"]
+    # Proof-of-concept dummy suggestions
+    dummy_suggestions = []
+    for line in missing_rule_lines[:3]:
+        dummy_suggestions.append(f"Add test for '{line}': ensures this rule is covered")
+    return dummy_suggestions
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -221,7 +224,7 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # Run Gemini AI suggestions (proof of concept)
+                    # Run proof-of-concept AI suggestions
                     ai_suggestions = get_ai_suggestions_proof(plan_text, missing_lines, user_input)
                     st.markdown("## AI Suggestions with Reasoning (Top 3)")
                     for suggestion in ai_suggestions:
