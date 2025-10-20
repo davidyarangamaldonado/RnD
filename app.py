@@ -27,12 +27,12 @@ def load_api_key():
     return None
 
 api_key = load_api_key()
-if not api_key:
+if api_key:
+    genai.configure(api_key=api_key)
+else:
     st.warning(
         "Google Gemini API key not found. AI suggestions will show 'AI suggestion failed'."
     )
-else:
-    genai.configure(api_key=api_key)
 
 # ---------------- File Readers ----------------
 def read_requirements_file():
@@ -40,8 +40,7 @@ def read_requirements_file():
         st.error(f"Requirements file not found at {REQUIREMENTS_FILE}")
         return None
     try:
-        df = pd.read_csv(REQUIREMENTS_FILE)
-        return df
+        return pd.read_csv(REQUIREMENTS_FILE)
     except Exception as e:
         st.error(f"Failed to read requirements file: {e}")
         return None
@@ -73,9 +72,7 @@ def normalize_token(token):
         normalized = f"{number_part}{unit_part}"
         normalized = re.sub(r'[^a-z0-9]', '', normalized)
         return normalized
-    else:
-        token = re.sub(r'[^a-z0-9]', '', token)
-        return token
+    return re.sub(r'[^a-z0-9]', '', token)
 
 def extract_check_items_robust(text):
     text = text.lower()
@@ -124,38 +121,43 @@ def get_gemini_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return ["No missing rules; coverage complete"]
 
-    prompt = f"""
+    # Split plan into sections of ~1000 characters to avoid empty response
+    chunks = [plan_text[i:i+1000] for i in range(0, len(plan_text), 1000)]
+    all_suggestions = []
+
+    for chunk in chunks:
+        prompt = f"""
 You are an engineering test coverage assistant.
 Analyze the proposed test plan below and provide up to 3 concise suggestions to improve coverage.
 Include a short reasoning for each suggestion.
 
 Proposed Test Plan:
-{plan_text}
+{chunk}
 
 Missing Rules:
 {chr(10).join(missing_rule_lines)}
 """
+        try:
+            if not api_key:
+                return ["AI suggestion failed"]
 
-    try:
-        if not api_key:
-            return ["AI suggestion failed"]
+            response = genai.generate_text(
+                model="gemini-2.5-flash-lite",
+                prompt=prompt,
+                temperature=0.3,
+                max_output_tokens=300
+            )
 
-        response = genai.generate_text(
-            model="gemini-2.5-flash-lite",
-            prompt=prompt,
-            temperature=0.3,
-            max_output_tokens=300
-        )
+            if response.result and len(response.result) > 0:
+                ai_text = response.result[0].content[0].text
+                suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
+                all_suggestions.extend(suggestions)
+        except Exception:
+            continue
 
-        if response.result and len(response.result) > 0:
-            ai_text = response.result[0].content[0].text
-            suggestions = [line.strip("- ").strip() for line in ai_text.split("\n") if line.strip()]
-            return suggestions[:3] if suggestions else ["AI suggestion failed"]
-        else:
-            return ["AI suggestion failed"]
-
-    except Exception:
-        return ["AI suggestion failed"]
+    # Deduplicate and limit to top 3
+    final_suggestions = list(dict.fromkeys(all_suggestions))[:3]
+    return final_suggestions if final_suggestions else ["AI suggestion failed"]
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
