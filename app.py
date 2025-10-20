@@ -134,7 +134,7 @@ Focus on critical areas such as safety, edge cases, performance metrics, and com
 Use your expertise to suggest practical, implementable tests.
 Include a short reasoning for each suggestion.
 
-Review the past analyses below to build upon previous suggestions, avoid redundancy, and provide novel insights where possible.
+Review the past analyses below to build upon previous suggestions. You can repeat the previously suggested ideas if the test plan needs it. 
 
 Past Analyses:
 {history}
