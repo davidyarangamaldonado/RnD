@@ -138,7 +138,7 @@ Missing Rules:
         if not api_key:
             return ["AI suggestion failed: No API key configured"]
 
-        response = genai.generate_content(
+        response = genai.generate_text(
             model="gemini-2.5-flash",
             contents=prompt
         )
