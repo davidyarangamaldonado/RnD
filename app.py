@@ -4,8 +4,7 @@ import pandas as pd
 import streamlit as st
 from docx import Document
 import google.generativeai as genai
-import requests
-from bs4 import BeautifulSoup
+from functools import lru_cache
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
@@ -129,35 +128,57 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         f.write("Proposed Plan:\n" + plan_text + "\n\n")
         f.write("AI Suggestions:\n" + "\n".join(ai_suggestions))
 
-# ---------------- Online Research ----------------
-def search_online_insights(keywords):
+# ---------------- Cached Online Search ----------------
+@lru_cache(maxsize=32)
+def fetch_top_online_resources(plan_text):
     urls = []
-    for keyword in keywords:
-        try:
+    online_content = []
+    try:
+        from bs4 import BeautifulSoup
+        import requests
+
+        keywords = re.findall(r'\b\w{4,}\b', plan_text.lower())[:5]
+        found_urls = 0
+        for keyword in keywords:
+            if found_urls >= 3:
+                break
             query = f"{keyword} testing best practices"
-            response = requests.get(f"https://www.google.com/search?q={query}", headers={"User-Agent": "Mozilla/5.0"})
+            response = requests.get(
+                f"https://www.google.com/search?q={query}",
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
             soup = BeautifulSoup(response.text, 'html.parser')
             for link in soup.find_all('a'):
+                if found_urls >= 3:
+                    break
                 href = link.get('href')
                 if href and 'url?q=' in href:
-                    urls.append(href.split('url?q=')[1].split('&')[0])
-        except:
-            continue
-    return urls[:3]  # Top 3 results
+                    url = href.split('url?q=')[1].split('&')[0]
+                    urls.append(url)
+                    found_urls += 1
+                    try:
+                        page_resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=3)
+                        page_soup = BeautifulSoup(page_resp.text, 'html.parser')
+                        text_content = ' '.join(p.get_text() for p in page_soup.find_all('p'))
+                        online_content.append(text_content[:1000])
+                    except Exception:
+                        continue
+    except Exception:
+        urls = []
+        online_content = []
+    return urls, online_content
 
-# ---------------- AI Suggestions ----------------
+# ---------------- Cached AI Suggestions ----------------
+@st.cache_data(show_spinner=False)
 def get_ai_suggestions(plan_text, missing_rule_lines, requirement_id):
     history_context = load_history(requirement_id)
-
-    # Extract keywords from plan for online research
-    keywords = re.findall(r'\b\w{4,}\b', plan_text.lower())  # words 4+ letters
-    urls = search_online_insights(keywords)
+    urls, online_content = fetch_top_online_resources(plan_text)
 
     system_prompt = """
 You are an engineering test coverage assistant.
-Analyze the proposed test plan and provide actionable insights, improvements, or considerations.
-Even if the plan covers all rules, suggest enhancements or highlight potential edge cases.
-Include any relevant best practices from online resources if possible.
+Analyze the proposed test plan and provide actionable suggestions, improvements, or considerations.
+Even if all rules are covered, suggest enhancements or potential edge cases.
+Include relevant best practices or insights from online resources if available.
 Provide concise bullet points.
 """
 
@@ -171,8 +192,11 @@ Missing rule lines (if any):
 Historical analyses:
 {history_context if history_context else 'None'}
 
-Online resources:
+Top online resources:
 {chr(10).join(urls) if urls else 'None'}
+
+Online content snippets:
+{chr(10).join(online_content) if online_content else 'None'}
 """
 
     try:
@@ -187,7 +211,7 @@ Online resources:
         return suggestions
     except Exception as e:
         save_history(requirement_id, missing_rule_lines, plan_text, [f"AI suggestion failed: {e}"])
-        return []
+        return ["AI suggestion failed or returned empty."]
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
@@ -247,11 +271,7 @@ if df is not None:
                     else:
                         st.success("All rule lines are fully covered in the proposed plan!")
 
-                    # AI suggestions with online insights
                     ai_suggestions = get_ai_suggestions(plan_text, missing_lines, user_input)
                     st.markdown("## AI Suggestions (Including Online Insights)")
-                    if ai_suggestions:
-                        for suggestion in ai_suggestions:
-                            st.markdown(f"- {suggestion}")
-                    else:
-                        st.info("No AI suggestions generated.")
+                    for suggestion in ai_suggestions:
+                        st.markdown(f"- {suggestion}")
