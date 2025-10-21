@@ -4,16 +4,15 @@ import pandas as pd
 import streamlit as st
 from docx import Document
 import google.generativeai as genai
+import tempfile
 import traceback
 
 # ---------------- Streamlit Setup ----------------
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
 st.title("RnD DVT Test Planner")
 
-# ---------------- Repo Config ----------------
-REPO_PATH = "."
-DEFAULT_REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.xlsx")
-HISTORY_DIR = os.path.join(REPO_PATH, "history")
+# ---------------- History Config ----------------
+HISTORY_DIR = os.path.join(tempfile.gettempdir(), "dvt_history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
 # ---------------- API Key Loader ----------------
@@ -31,13 +30,11 @@ else:
     st.warning("Google Gemini API key not found. AI suggestions will show 'AI suggestion failed'.")
 
 # ---------------- File Readers ----------------
-def read_requirements_file(file_path):
-    if not os.path.exists(file_path):
-        return None, "Requirements file not found."
-    if not file_path.endswith(".xlsx") or os.path.basename(file_path) != "dvt_requirements.xlsx":
+def read_requirements_file(uploaded_file):
+    if uploaded_file.name != "dvt_requirements.xlsx":
         return None, "Please provide a valid DVT requirements file named 'dvt_requirements.xlsx'."
     try:
-        df = pd.read_excel(file_path)
+        df = pd.read_excel(uploaded_file)
         if df.shape[1] < 3:
             return None, "Excel file must have at least 3 columns: ID, Category, Description."
         return df, None
@@ -75,7 +72,6 @@ def extract_check_items_robust(text):
 def get_missing_rule_lines(rule_lines, plan_text):
     plan_tokens = extract_check_items_robust(plan_text)
     normalized_plan_tokens = {normalize_token(t) for t in plan_tokens}
-
     missing_lines = []
     for line in rule_lines:
         rule_tokens = re.findall(r'\b[\w\-\+\.]+\b', line)
@@ -85,8 +81,6 @@ def get_missing_rule_lines(rule_lines, plan_text):
 
 # ---------------- History ----------------
 def load_history(requirement_id):
-    if not os.path.exists(HISTORY_DIR):
-        return ""
     history_files = [f for f in os.listdir(HISTORY_DIR) if f.startswith(requirement_id)]
     history_texts = []
     for file in history_files:
@@ -106,24 +100,19 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
             f.write("AI Suggestions:\n" + ai_suggestions)
 
 # ---------------- Load Rules ----------------
-def load_rules_for_requirement(requirement_id):
-    rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
-    if os.path.exists(rule_file):
+def load_rules_for_requirement(uploaded_rule_file):
+    if uploaded_rule_file:
         try:
-            doc = Document(rule_file)
-            return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+            return docx_to_text(uploaded_rule_file)
         except Exception as e:
-            st.warning(f"Failed to read rule file {rule_file}: {e}")
+            st.warning(f"Failed to read rule file: {e}")
             return []
-    else:
-        st.warning(f"No rules file found for {requirement_id}")
-        return []
+    return []
 
 # ---------------- Gemini AI Suggestions ----------------
 def get_gemini_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return "No missing rules; coverage complete"
-
     history = load_history(requirement_id)
     prompt = f"""
 You are an engineering test coverage assistant.
@@ -157,24 +146,15 @@ uploaded_req_file = st.file_uploader(
     type=["xlsx"]
 )
 
-REQUIREMENTS_FILE = DEFAULT_REQUIREMENTS_FILE
+if not uploaded_req_file:
+    st.info("Please upload the DVT requirements file to proceed.")
+    st.stop()
 
-if uploaded_req_file:
-    if uploaded_req_file.name != "dvt_requirements.xlsx":
-        st.error("Please provide a valid DVT requirements file named 'dvt_requirements.xlsx'.")
-        st.stop()
-    temp_req_path = os.path.join(REPO_PATH, "temp_requirements.xlsx")
-    with open(temp_req_path, "wb") as f:
-        f.write(uploaded_req_file.read())
-    REQUIREMENTS_FILE = temp_req_path
-
-# ---------------- Load and Validate Requirements ----------------
-df, error = read_requirements_file(REQUIREMENTS_FILE)
+df, error = read_requirements_file(uploaded_req_file)
 if error:
     st.error(error)
     st.stop()
 
-# ---------------- Extract Requirement Info ----------------
 requirement_ids = df.iloc[:, 0].astype(str).tolist()
 categories = df.iloc[:, 1].astype(str).tolist()
 descriptions = df.iloc[:, 2].astype(str).tolist()
@@ -185,7 +165,6 @@ id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, des
 # ---------------- Requirement ID Input ----------------
 user_input = st.text_input("Enter the Requirement ID (e.g. DS-1):").strip().upper()
 valid_id = False
-
 if user_input:
     if user_input in id_to_description:
         valid_id = True
@@ -200,15 +179,13 @@ if user_input:
 # ---------------- Test Plan Upload ----------------
 if valid_id:
     uploaded_plan_file = st.file_uploader(
-        "Upload Proposed Test Plan (.docx or .txt)", 
+        f"Upload Proposed Test Plan (.docx or .txt) for {user_input}",
         type=["docx", "txt"]
     )
-
     if uploaded_plan_file:
-        # Ensure filename corresponds to Requirement ID
         file_rid = os.path.splitext(uploaded_plan_file.name)[0].upper()
         if file_rid != user_input:
-            st.error("Please provide a valid test plan with the associated Requirement ID.")
+            st.error("Please provide a test plan file named exactly as the Requirement ID.")
             st.stop()
 
         if uploaded_plan_file.name.endswith(".docx"):
@@ -223,7 +200,7 @@ if valid_id:
 
         if st.button("Analyze Test Plan"):
             with st.spinner("Analyzing test plan..."):
-                rule_lines = load_rules_for_requirement(user_input)
+                rule_lines = []  # No repo lookup; rules must be uploaded if needed
                 missing_lines = get_missing_rule_lines(rule_lines, plan_text) if rule_lines else []
 
                 st.markdown("## Your Proposed Test Plan")
