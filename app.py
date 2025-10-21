@@ -10,6 +10,12 @@ import traceback
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
 st.title("RnD DVT Test Planner")
 
+# ---------------- Repo Config ----------------
+REPO_PATH = "."  # Current directory
+DEFAULT_REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.xlsx")
+HISTORY_DIR = os.path.join(REPO_PATH, "history")
+os.makedirs(HISTORY_DIR, exist_ok=True)
+
 # ---------------- API Key Loader ----------------
 def load_api_key():
     if hasattr(st, "secrets"):
@@ -51,7 +57,6 @@ def read_requirements_file(file_path, uploaded=False):
         if uploaded:
             st.error(f"Failed to read Excel file: {e}")
         return None
-
 
 def docx_to_text(file):
     doc = Document(file)
@@ -180,18 +185,20 @@ uploaded_req_file = st.file_uploader(
 )
 
 if uploaded_req_file:
-    try:
-        temp_req_path = os.path.join(REPO_PATH, "temp_requirements.xlsx")
-        with open(temp_req_path, "wb") as f:
-            f.write(uploaded_req_file.read())
-        REQUIREMENTS_FILE = temp_req_path
-    except:
-        st.error("Please upload a valid requirement file in Excel format.")
-        st.stop()
+    temp_req_path = os.path.join(REPO_PATH, "temp_requirements.xlsx")
+    with open(temp_req_path, "wb") as f:
+        f.write(uploaded_req_file.read())
+    REQUIREMENTS_FILE = temp_req_path
+    df = read_requirements_file(REQUIREMENTS_FILE, uploaded=True)
 else:
-    REQUIREMENTS_FILE = DEFAULT_REQUIREMENTS_FILE
+    # Only use default if it exists
+    if os.path.exists(DEFAULT_REQUIREMENTS_FILE):
+        REQUIREMENTS_FILE = DEFAULT_REQUIREMENTS_FILE
+        df = read_requirements_file(REQUIREMENTS_FILE, uploaded=False)
+    else:
+        st.warning("No requirements file uploaded and default file not found.")
+        st.stop()
 
-df = read_requirements_file(REQUIREMENTS_FILE)
 if df is None:
     st.stop()
 
