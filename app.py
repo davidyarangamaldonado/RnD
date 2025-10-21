@@ -197,6 +197,7 @@ if df is not None:
         if user_input in id_to_description:
             valid_id = True
             st.success(f"**{user_input}**\n\n**Description:** {id_to_description[user_input]}")
+            st.sucess (f"**{user_input}**\n\n**Category:** {id_to_description[user_input]}")
         else:
             st.error("No match found for that Requirement ID.")
 
