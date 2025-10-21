@@ -41,10 +41,9 @@ def read_requirements_file(file_path, uploaded=False):
     Reads the requirements Excel file.
     - Only shows errors if uploaded=True (i.e., the user actually uploaded a file)
     """
-    if uploaded:
-        if not file_path.endswith(".xlsx") or not os.path.basename(file_path).lower() == "dvt_requirements.xlsx":
-            st.error("Please upload a valid requirement file named 'dvt_requirements.xlsx' in Excel format.")
-            return None
+    if uploaded and not file_path.endswith(".xlsx"):
+        st.error("Please upload a valid Excel (.xlsx) file.")
+        return None
 
     try:
         df = pd.read_excel(file_path)
@@ -185,6 +184,11 @@ uploaded_req_file = st.file_uploader(
 )
 
 if uploaded_req_file:
+    # Validate uploaded filename
+    if uploaded_req_file.name.lower() != "dvt_requirements.xlsx":
+        st.error("Please upload a valid requirement file named 'dvt_requirements.xlsx'.")
+        st.stop()
+
     temp_req_path = os.path.join(REPO_PATH, "temp_requirements.xlsx")
     with open(temp_req_path, "wb") as f:
         f.write(uploaded_req_file.read())
