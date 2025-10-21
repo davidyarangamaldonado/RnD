@@ -10,12 +10,6 @@ import traceback
 st.set_page_config(page_title="RnD DVT Test Planner", layout="wide")
 st.title("RnD DVT Test Planner")
 
-# ---------------- Repo Config ----------------
-REPO_PATH = "."
-DEFAULT_REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.xlsx")
-HISTORY_DIR = os.path.join(REPO_PATH, "history")
-os.makedirs(HISTORY_DIR, exist_ok=True)
-
 # ---------------- API Key Loader ----------------
 def load_api_key():
     if hasattr(st, "secrets"):
