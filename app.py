@@ -36,19 +36,28 @@ else:
     )
 
 # ---------------- File Readers ----------------
-def read_requirements_file(file_path):
-    try:
-        if not file_path.endswith(".xlsx"):
-            st.error("Please upload a valid requirement file in Excel format.")
+def read_requirements_file(file_path, uploaded=False):
+    """
+    Reads the requirements Excel file.
+    - Only shows errors if uploaded=True (i.e., the user actually uploaded a file)
+    """
+    if uploaded:
+        if not file_path.endswith(".xlsx") or not os.path.basename(file_path).lower() == "dvt_requirements.xlsx":
+            st.error("Please upload a valid requirement file named 'dvt_requirements.xlsx' in Excel format.")
             return None
+
+    try:
         df = pd.read_excel(file_path)
         if df.shape[1] < 3:
-            st.error("Excel file must have at least 3 columns: ID, Category, Description")
+            if uploaded:
+                st.error("Excel file must have at least 3 columns: ID, Category, Description")
             return None
         return df
     except Exception as e:
-        st.error(f"Failed to read Excel file: {e}")
+        if uploaded:
+            st.error(f"Failed to read Excel file: {e}")
         return None
+
 
 def docx_to_text(file):
     doc = Document(file)
