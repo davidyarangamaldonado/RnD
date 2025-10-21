@@ -1,8 +1,0 @@
-Requirement_ID ,Category,Description,Rules for testing
-DS-1,RF,MUST have an equalized MER of 50dB,"DS MER (equalized) >= 48dB  
-Perform on all 4 DS ports.
-Perform at temperatures -30C, 25C, and 65C. (didn't list -40C since the module won't be in a node)
-Requires VSA/Spectrum Analyzer w/VSA software. May want to test with different tilt settings.
-Downstream SC-QAM Modulation order 256-QAM. Also test with 4096-QAM modulation order. "
-FREQ-2,,This is a test,
-FREQ-3,,,
