@@ -12,7 +12,7 @@ st.title("RnD DVT Test Planner")
 
 # ---------------- Repo Config ----------------
 REPO_PATH = "."
-REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.csv")
+REQUIREMENTS_FILE = os.path.join(REPO_PATH, "dvt_requirements.xlsx")
 HISTORY_DIR = os.path.join(REPO_PATH, "history")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 
