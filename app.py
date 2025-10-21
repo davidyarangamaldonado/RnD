@@ -238,6 +238,7 @@ if valid_id:
         if user_input not in uploaded_plan_file.name:
             st.error("Please upload a valid test plan with requirement ID in filename.")
         else:
+            # Read file content
             if uploaded_plan_file.name.endswith(".docx"):
                 plan_lines = docx_to_text(uploaded_plan_file)
             else:
@@ -250,21 +251,28 @@ if valid_id:
 
             if st.button("Analyze Test Plan"):
                 with st.spinner("Analyzing test plan..."):
+                    # Load rule lines if they exist
                     rule_lines = load_rules_for_requirement(user_input)
-                    missing_lines = get_missing_rule_lines(rule_lines, plan_text) if rule_lines else []
-
+                    
                     st.markdown("## Your Proposed Test Plan")
                     for line in plan_lines:
                         if line.strip():
                             st.markdown(f"- {line.strip()}")
 
-                    st.markdown("## Based on Past Test Cases")
-                    if missing_lines:
-                        for line in missing_lines:
-                            st.markdown(f"- {line}")
+                    # Handle case with no past rules
+                    if not rule_lines:
+                        st.info("No past test case found for this requirement.")
                     else:
-                        st.success("All rule lines are fully covered in the proposed plan!")
+                        missing_lines = get_missing_rule_lines(rule_lines, plan_text)
 
-                    ai_suggestions = get_gemini_suggestions(plan_text, missing_lines, user_input)
-                    st.markdown("## AI Suggestions")
-                    st.markdown(ai_suggestions)
+                        st.markdown("## Based on Past Test Cases")
+                        if missing_lines:
+                            for line in missing_lines:
+                                st.markdown(f"- {line}")
+                        else:
+                            st.success("All rule lines are fully covered in the proposed plan!")
+
+                        # AI suggestions only if there are rule lines
+                        ai_suggestions = get_gemini_suggestions(plan_text, missing_lines, user_input)
+                        st.markdown("## AI Suggestions")
+                        st.markdown(ai_suggestions)
