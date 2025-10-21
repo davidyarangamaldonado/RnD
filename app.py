@@ -41,9 +41,17 @@ def read_requirements_file():
         st.error(f"Requirements file not found at {REQUIREMENTS_FILE}")
         return None
     try:
-        return pd.read_csv(REQUIREMENTS_FILE)
+        # Only allow Excel files
+        if not REQUIREMENTS_FILE.endswith(".xlsx"):
+            st.error("Only Excel (.xlsx) files are supported for requirements.")
+            return None
+        df = pd.read_excel(REQUIREMENTS_FILE)
+        if df.shape[1] < 3:
+            st.error("Excel file must have at least 3 columns: Requirement ID, Category, Description")
+            return None
+        return df
     except Exception as e:
-        st.error(f"Failed to read requirements file: {e}")
+        st.error(f"Failed to read Excel file: {e}")
         return None
 
 def docx_to_text(file):
