@@ -178,28 +178,29 @@ And so on up to 5.
 
 # ---------------- Main UI ----------------
 df = read_requirements_file()
-if df is not None:
-    df.columns = [str(col).strip() for col in df.columns]
+if df.shape[1] < 3:
+    st.error("Requirements file must have at least 3 columns (ID, Category, Description).")
+    st.stop()
 
-    try:
-        requirement_ids = df.iloc[:, 0].astype(str).tolist()
-        descriptions = df.iloc[:, 2].astype(str).tolist()
-    except IndexError:
-        st.error("Requirements file must have at least 3 columns (ID, ..., Description).")
-        st.stop()
+# Extract columns
+requirement_ids = df.iloc[:, 0].astype(str).tolist()
+categories = df.iloc[:, 1].astype(str).tolist()
+descriptions = df.iloc[:, 2].astype(str).tolist()
 
-    id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
+# Create lookup dictionaries
+id_to_category = {rid.upper(): cat for rid, cat in zip(requirement_ids, categories)}
+id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
 
-    user_input = st.text_input("Enter the Requirement ID (e.g. DS-1):").strip().upper()
-    valid_id = False
+user_input = st.text_input("Enter the Requirement ID (e.g. DS-1):").strip().upper()
+valid_id = False
 
-    if user_input:
-        if user_input in id_to_description:
-            valid_id = True
-            st.success(f"**{user_input}**\n\n**Description:** {id_to_description[user_input]}")
-            st.success (f"**{user_input}**\n\n**Category:** {id_to_description[user_input]}")
-        else:
-            st.error("No match found for that Requirement ID.")
+if user_input:
+    if user_input in id_to_description:
+        valid_id = True
+        st.success(f"**{user_input}**\n\n**Category:** {id_to_category[user_input]}\n\n**Description:** {id_to_description[user_input]}")
+    else:
+        st.error("No match found for that Requirement ID.")
+
 
     if valid_id:
         uploaded_plan_file = st.file_uploader(
