@@ -22,53 +22,31 @@ def load_api_key():
         api_key = st.secrets.get("google_gemini", {}).get("api_key")
         if api_key:
             return api_key
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    if api_key:
-        return api_key
-    return None
+    return os.environ.get("GOOGLE_API_KEY")
 
 api_key = load_api_key()
 if api_key:
     genai.configure(api_key=api_key)
 else:
-    st.warning(
-        "Google Gemini API key not found. AI suggestions will show 'AI suggestion failed'."
-    )
+    st.warning("Google Gemini API key not found. AI suggestions will show 'AI suggestion failed'.")
 
 # ---------------- File Readers ----------------
 def read_requirements_file(file_path):
     if not os.path.exists(file_path):
-        st.error(f"Requirements file not found at {file_path}")
-        return None
+        return None, "Requirements file not found."
+    if not file_path.endswith(".xlsx") or os.path.basename(file_path) != "dvt_requirements.xlsx":
+        return None, "Please provide a valid DVT requirements file named 'dvt_requirements.xlsx'."
     try:
-        if not file_path.endswith(".xlsx"):
-            st.error("Only Excel (.xlsx) files are supported for requirements.")
-            return None
         df = pd.read_excel(file_path)
         if df.shape[1] < 3:
-            st.error("Excel file must have at least 3 columns: ID, Category, Description")
-            return None
-        return df
+            return None, "Excel file must have at least 3 columns: ID, Category, Description."
+        return df, None
     except Exception as e:
-        st.error(f"Failed to read Excel file: {e}")
-        return None
+        return None, f"Failed to read Excel file: {e}"
 
 def docx_to_text(file):
     doc = Document(file)
     return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-
-def load_rules_for_requirement(requirement_id):
-    rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
-    if os.path.exists(rule_file):
-        try:
-            doc = Document(rule_file)
-            return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-        except Exception as e:
-            st.warning(f"Failed to read rule file {rule_file}: {e}")
-            return []
-    else:
-        st.warning(f"No rules file found for {requirement_id}")
-        return []
 
 # ---------------- Token Normalization ----------------
 def normalize_token(token):
@@ -127,46 +105,41 @@ def save_history(requirement_id, missing_rule_lines, plan_text, ai_suggestions):
         else:
             f.write("AI Suggestions:\n" + ai_suggestions)
 
+# ---------------- Load Rules ----------------
+def load_rules_for_requirement(requirement_id):
+    rule_file = os.path.join(REPO_PATH, f"{requirement_id}_Rule.docx")
+    if os.path.exists(rule_file):
+        try:
+            doc = Document(rule_file)
+            return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+        except Exception as e:
+            st.warning(f"Failed to read rule file {rule_file}: {e}")
+            return []
+    else:
+        st.warning(f"No rules file found for {requirement_id}")
+        return []
+
 # ---------------- Gemini AI Suggestions ----------------
 def get_gemini_suggestions(plan_text, missing_rule_lines, requirement_id):
     if not missing_rule_lines:
         return "No missing rules; coverage complete"
 
     history = load_history(requirement_id)
-
     prompt = f"""
-You are an engineering test coverage assistant, expert in RF and power systems.
-Analyze the proposed test plan below and provide up to 5 concise suggestions to improve the test coverage.
-Focus on critical areas such as safety, edge cases, performance metrics, and compliance with standards.
-Use your expertise to suggest practical, implementable tests.
-Include a short reasoning for each suggestion.
-
-Review the past analyses below to build upon previous suggestions. You can repeat the previously suggested ideas if the test plan needs it. 
-
+You are an engineering test coverage assistant.
+Proposed Test Plan:
+{plan_text}
+Missing Rules:
+{chr(10).join(missing_rule_lines)}
 Past Analyses:
 {history}
 
-Proposed Test Plan:
-{plan_text}
-
-Missing Rules:
-{chr(10).join(missing_rule_lines)}
-
-Output ONLY the suggestions in the following exact markdown format, with no additional text or numbering:
-
-- **Suggestion:** Concise suggestion description.
-  - **Reasoning:** Short reasoning here.
-
-- **Suggestion:** Concise suggestion description.
-  - **Reasoning:** Short reasoning here.
-
-And so on up to 5.
+Provide up to 5 concise suggestions with reasoning.
+Output ONLY the suggestions in markdown format.
 """
-
     try:
         if not api_key:
             return "AI suggestion failed: No API key configured"
-
         model = genai.GenerativeModel('gemini-2.5-pro')
         response = model.generate_content(prompt)
         ai_text = response.text
@@ -174,39 +147,38 @@ And so on up to 5.
             return "AI suggestion failed"
         save_history(requirement_id, missing_rule_lines, plan_text, ai_text)
         return ai_text
-
     except Exception as e:
         tb = traceback.format_exc()
         return f"AI suggestion failed: {str(e)}\n\nTraceback: {tb}"
 
-# ---------------- Requirements Excel Upload (Optional) ----------------
+# ---------------- Requirements Upload ----------------
 uploaded_req_file = st.file_uploader(
-    "Upload Requirements Excel (.xlsx) [optional, default is dvt_requirements.xlsx]",
+    "Upload Requirements Excel (.xlsx) named 'dvt_requirements.xlsx'",
     type=["xlsx"]
 )
 
+REQUIREMENTS_FILE = DEFAULT_REQUIREMENTS_FILE
+
 if uploaded_req_file:
+    if uploaded_req_file.name != "dvt_requirements.xlsx":
+        st.error("Please provide a valid DVT requirements file named 'dvt_requirements.xlsx'.")
+        st.stop()
     temp_req_path = os.path.join(REPO_PATH, "temp_requirements.xlsx")
     with open(temp_req_path, "wb") as f:
         f.write(uploaded_req_file.read())
     REQUIREMENTS_FILE = temp_req_path
 
-# ---------------- Main UI ----------------
-df = read_requirements_file(REQUIREMENTS_FILE)
-if df is None:
+# ---------------- Load and Validate Requirements ----------------
+df, error = read_requirements_file(REQUIREMENTS_FILE)
+if error:
+    st.error(error)
     st.stop()
 
-# Safety check for columns
-if df.shape[1] < 3:
-    st.error("Excel file must have at least 3 columns: ID, Category, Description.")
-    st.stop()
-
-# Extract columns
+# ---------------- Extract Requirement Info ----------------
 requirement_ids = df.iloc[:, 0].astype(str).tolist()
 categories = df.iloc[:, 1].astype(str).tolist()
 descriptions = df.iloc[:, 2].astype(str).tolist()
 
-# Create lookup dictionaries
 id_to_category = {rid.upper(): cat for rid, cat in zip(requirement_ids, categories)}
 id_to_description = {rid.upper(): desc for rid, desc in zip(requirement_ids, descriptions)}
 
@@ -223,9 +195,9 @@ if user_input:
             f"**Description:** {id_to_description[user_input]}"
         )
     else:
-        st.error("No match found for that Requirement ID.")
+        st.error("Please provide a valid Requirement ID from the uploaded Excel file.")
 
-# ---------------- Proposed Test Plan Upload ----------------
+# ---------------- Test Plan Upload ----------------
 if valid_id:
     uploaded_plan_file = st.file_uploader(
         "Upload Proposed Test Plan (.docx or .txt)", 
@@ -233,6 +205,12 @@ if valid_id:
     )
 
     if uploaded_plan_file:
+        # Ensure filename corresponds to Requirement ID
+        file_rid = os.path.splitext(uploaded_plan_file.name)[0].upper()
+        if file_rid != user_input:
+            st.error("Please provide a valid test plan with the associated Requirement ID.")
+            st.stop()
+
         if uploaded_plan_file.name.endswith(".docx"):
             plan_lines = docx_to_text(uploaded_plan_file)
         else:
@@ -253,7 +231,7 @@ if valid_id:
                     if line.strip():
                         st.markdown(f"- {line.strip()}")
 
-                st.markdown("## Based on Past Test Cases")
+                st.markdown("## Missing Rule Lines")
                 if missing_lines:
                     for line in missing_lines:
                         st.markdown(f"- {line}")
